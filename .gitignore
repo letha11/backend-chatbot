@@ -1,0 +1,69 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Root env files
+.env
+.env.*
+!.env.example
+
+# Temporary directories
+tmp/
+temp/
+
+# Cursor
+.cursor/
+
+# Docker
+docker-compose.override.yml
+*.pid
+
+# =========================
+# Express API (Node/TypeScript)
+# =========================
+express-api/node_modules/
+express-api/dist/
+express-api/coverage/
+express-api/.nyc_output/
+express-api/.eslintcache
+express-api/*.log
+express-api/logs/
+express-api/npm-debug.log*
+express-api/yarn-error.log*
+express-api/pnpm-debug.log*
+express-api/tsconfig.tsbuildinfo
+
+# TypeScript build info (any location)
+*.tsbuildinfo
+
+# Environment files (service-specific)
+express-api/.env
+express-api/.env.*
+
+# =========================
+# FastAPI ML (Python)
+# =========================
+fastapi-ml/.venv/
+fastapi-ml/venv/
+fastapi-ml/__pycache__/
+fastapi-ml/**/*.pyc
+fastapi-ml/.mypy_cache/
+fastapi-ml/.pytest_cache/
+fastapi-ml/.ruff_cache/
+fastapi-ml/.coverage
+fastapi-ml/coverage.xml
+fastapi-ml/htmlcov/
+fastapi-ml/.cache/
+fastapi-ml/build/
+fastapi-ml/dist/
+fastapi-ml/*.egg-info/
+fastapi-ml/.ipynb_checkpoints/
+fastapi-ml/logs/
+fastapi-ml/chroma_data/
+fastapi-ml/.env
+fastapi-ml/.env.*
+
+
