@@ -1,3 +1,5 @@
+import { config } from '../config/environment';
+import bcrypt from 'bcrypt';
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class InitialSchema1698000000000 implements MigrationInterface {
@@ -14,13 +16,26 @@ export class InitialSchema1698000000000 implements MigrationInterface {
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "username" character varying(255) NOT NULL,
         "password_hash" character varying(255) NOT NULL,
-        "role" character varying(50) NOT NULL DEFAULT 'admin',
+        "role" character varying(50) NOT NULL DEFAULT 'user',
         "is_active" boolean NOT NULL DEFAULT true,
         "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "UQ_users_username" UNIQUE ("username"),
         CONSTRAINT "PK_users_id" PRIMARY KEY ("id")
       )
+    `);
+
+    // Create super-admin user
+    await queryRunner.query(`
+      INSERT INTO "users" (
+        "username",
+        "password_hash",
+        "role"
+      ) VALUES (
+        '${config.superAdmin.username}',
+        '${bcrypt.hashSync(config.superAdmin.password, 10)}',
+        'super_admin'
+      ) ON CONFLICT DO NOTHING
     `);
 
     // Create divisions table

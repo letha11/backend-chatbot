@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/environment';
 import { AppDataSource } from '../config/database';
-import { User } from '../models/User';
+import { User, UserRole } from '../models/User';
 import { logger } from '../utils/logger';
 import { ResponseHandler } from '../utils/response';
 
@@ -44,7 +44,7 @@ export const authenticateToken = async (
   }
 };
 
-export const requireRole = (roles: string[]) => {
+export const requireRole = (roles: UserRole[]) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       ResponseHandler.unauthorized(res, 'Authentication required');

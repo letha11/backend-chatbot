@@ -14,6 +14,11 @@ export const config = {
     password: process.env.DB_PASSWORD || 'password',
     name: process.env.DB_NAME || 'chatbot_control_panel',
   },
+
+  superAdmin: {
+    username: process.env.SUPER_USERNAME || 'admin',
+    password: process.env.SUPER_PASSWORD || 'admin',
+  },
   
   jwt: {
     secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',

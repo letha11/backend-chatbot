@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { AppDataSource } from '../config/database';
-import { User } from '../models/User';
+import { User, UserRole } from '../models/User';
 import { config } from '../config/environment';
 import { asyncHandler } from '../middlewares/errorHandler';
 import { AuthenticatedRequest } from '../middlewares/auth';
@@ -28,7 +28,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   const user = userRepository.create({
     username,
     password_hash,
-    role: role || 'admin',
+    role: role as UserRole,
   });
   
   await userRepository.save(user);

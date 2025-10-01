@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { register, login, getMe } from '../controllers/authController';
 import { validateBody } from '../middlewares/validation';
-import { authenticateToken } from '../middlewares/auth';
+import { authenticateToken, requireRole } from '../middlewares/auth';
 import { registerSchema, loginSchema } from '../utils/validation';
 
 const router = Router();
 
 // Public routes
-router.post('/register', validateBody(registerSchema), register);
+router.post('/register', validateBody(registerSchema), requireRole(["super_admin"]), register);
 router.post('/login', validateBody(loginSchema), login);
 
 // Protected routes

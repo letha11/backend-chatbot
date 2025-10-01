@@ -8,6 +8,8 @@ import {
 } from 'typeorm';
 import { Document } from './Document';
 
+export type UserRole = 'admin' | 'super_admin' | 'user';
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -19,8 +21,8 @@ export class User {
   @Column({ type: 'varchar', length: 255 })
   password_hash: string;
 
-  @Column({ type: 'varchar', length: 50, default: 'admin' })
-  role: string;
+  @Column({ type: 'varchar', length: 50, default: 'user' })
+  role: UserRole;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
