@@ -16,6 +16,7 @@ export const config = {
   },
 
   superAdmin: {
+    name: process.env.SUPER_NAME || 'Admin',
     username: process.env.SUPER_USERNAME || 'admin',
     password: process.env.SUPER_PASSWORD || 'admin',
   },

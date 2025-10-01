@@ -14,6 +14,7 @@ export class InitialSchema1698000000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE "users" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+        "name" character varying(255) NOT NULL,
         "username" character varying(255) NOT NULL,
         "password_hash" character varying(255) NOT NULL,
         "role" character varying(50) NOT NULL DEFAULT 'user',
@@ -28,10 +29,12 @@ export class InitialSchema1698000000000 implements MigrationInterface {
     // Create super-admin user
     await queryRunner.query(`
       INSERT INTO "users" (
+        "name",
         "username",
         "password_hash",
         "role"
       ) VALUES (
+        '${config.superAdmin.name}',
         '${config.superAdmin.username}',
         '${bcrypt.hashSync(config.superAdmin.password, 10)}',
         'super_admin'

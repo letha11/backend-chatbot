@@ -139,6 +139,7 @@ This document tracks the implementation progress of the Chatbot Control Panel Ba
   - API versioning with `/api/v1` prefix
   - Health check endpoint
   - Proper route organization and mounting
+  - Users management routes mounted under `/api/v1/users`
 
 ### ✅ Development & Production Setup
 - **Files Created**:
@@ -178,6 +179,19 @@ This document tracks the implementation progress of the Chatbot Control Panel Ba
 - `POST /api/v1/auth/register` - User registration
 - `POST /api/v1/auth/login` - User login
 - `GET /api/v1/auth/me` - Get current user
+
+### Users Management (Super Admin Only) ✅ NEW
+- `GET /api/v1/users` - List users
+- `GET /api/v1/users/:id` - Get user by ID
+- `POST /api/v1/users` - Create user
+- `PUT /api/v1/users/:id` - Update user (including password/role/active)
+- `DELETE /api/v1/users/:id` - Delete user
+
+#### Implementation Details
+- Controller: `src/controllers/userController.ts` with CRUD handlers
+- Routes: `src/routes/userRoutes.ts` (guarded by JWT and `requireRole(['super_admin'])`)
+- Validation: `createUserSchema`, `updateUserSchema`, `uuidSchema` in `src/utils/validation.ts`
+- Responses: Standardized using `ResponseHandler`
 
 ### Division Management
 - `POST /api/v1/divisions` - Create division

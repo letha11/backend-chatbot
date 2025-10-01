@@ -3,7 +3,7 @@ import Joi from 'joi';
 // User validation schemas
 export const registerSchema = Joi.object({
   username: Joi.string().alphanum().min(3).max(30).required(),
-  password: Joi.string().min(6).required(),
+  password: Joi.string().min(5).required(),
   role: Joi.string().valid("admin", "super_admin", "user").default('user'),
 });
 
@@ -45,3 +45,21 @@ export const chatRequestSchema = Joi.object({
 export const uuidSchema =  Joi.object({
   id: Joi.string().uuid().required(),
 })
+
+// Users CRUD validation schemas
+export const createUserSchema = Joi.object({
+  name: Joi.string().allow('', null),
+  username: Joi.string().alphanum().min(3).max(30).required(),
+  password: Joi.string().min(5).required(),
+  role: Joi.string().valid("admin", "super_admin", "user").default('user'),
+  is_active: Joi.boolean().default(true),
+});
+
+export const updateUserSchema = Joi.object({
+  name: Joi.string().allow('', null),
+  username: Joi.string().alphanum().min(3).max(30),
+  password: Joi.string().min(5),
+  role: Joi.string().valid("admin", "super_admin", "user"),
+  is_active: Joi.boolean(),
+}).min(1);
+

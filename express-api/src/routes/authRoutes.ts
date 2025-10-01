@@ -7,7 +7,8 @@ import { registerSchema, loginSchema } from '../utils/validation';
 const router = Router();
 
 // Public routes
-router.post('/register', validateBody(registerSchema), requireRole(["super_admin"]), register);
+// DISABLED
+// router.post('/register', validateBody(registerSchema), requireRole(["super_admin"]), register);
 router.post('/login', validateBody(loginSchema), login);
 
 // Protected routes
