@@ -13,7 +13,7 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
     division_id?: string | null;
     title?: string;
     user_id?: string | null;
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; sources: string }>;
   };
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -41,11 +41,12 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
     conversation = await conversationRepo.save(conversation);
   }
 
-  const toInsert = messages.map((m) =>
+const toInsert = messages.map((m) =>
     messageRepo.create({
       conversation_id: conversation!.id,
       role: m.role,
       content: m.content,
+      sources: m.sources,
     })
   );
 
@@ -61,8 +62,7 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
   }, 'Conversation messages ingested');
 });
 
-// Public API to fetch recent history for a conversation (for UI or RAG context)
-export const getHistory = asyncHandler(async (req: Request, res: Response) => {
+export const getHistoryInternal = asyncHandler(async (req: Request, res: Response) => {
   const { conversation_id } = req.params as { conversation_id: string };
   const limit = Math.min(parseInt((req.query.limit as string) || '6', 10), 20);
 
@@ -95,7 +95,50 @@ export const getHistory = asyncHandler(async (req: Request, res: Response) => {
       user_id: conversation.user_id,
       created_at: conversation.created_at,
     },
-    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })),
+    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, sources: m.sources, created_at: m.created_at })),
+  });
+});
+
+// Public API to fetch recent history for a conversation (for UI or RAG context)
+export const getHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { conversation_id } = req.params as { conversation_id: string };
+  const limit = Math.min(parseInt((req.query.limit as string) || '6', 10), 20);
+
+
+  if (!conversation_id) {
+    return ResponseHandler.validationError(res, 'conversation_id is required');
+  }
+
+  const messageRepo = AppDataSource.getRepository(ConversationMessage);
+  const conversationRepo = AppDataSource.getRepository(Conversation);
+
+  const conversation = await conversationRepo.findOne({ where: { id: conversation_id } });
+  if (!conversation) {
+    return ResponseHandler.notFound(res, 'Conversation not found');
+  }
+
+  if (conversation.user_id !== req.user!.id) {
+    return ResponseHandler.forbidden(res, 'You are not allowed to access this conversation');
+  }
+
+  const messages = await messageRepo.find({
+    where: { conversation_id },
+    order: { created_at: 'DESC' },
+    take: limit,
+  });
+
+  // Return in chronological order
+  messages.reverse();
+
+  return ResponseHandler.success(res, {
+    conversation: {
+      id: conversation.id,
+      title: conversation.title,
+      division_id: conversation.division_id,
+      user_id: conversation.user_id,
+      created_at: conversation.created_at,
+    },
+    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, sources: m.sources, created_at: m.created_at })),
   });
 });
 

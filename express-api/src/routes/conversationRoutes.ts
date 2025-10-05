@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ingestMessage, getHistory, listConversations } from '../controllers/conversationController';
+import { ingestMessage, getHistory, listConversations, getHistoryInternal } from '../controllers/conversationController';
 import { validateBody } from '../middlewares/validation';
 import { authenticateToken } from '../middlewares/auth';
 import { config } from '../config/environment';
@@ -18,9 +18,10 @@ const internalKeyGuard = (req: any, res: any, next: any) => {
 
 // Ingest one or more messages; creates conversation if missing (internal only)
 router.post('/ingest', internalKeyGuard, ingestMessage);
+router.get('/:conversation_id/history-internal', internalKeyGuard, getHistoryInternal);
 
-// Fetch recent messages for a conversation (internal only)
-router.get('/:conversation_id/history', internalKeyGuard, getHistory);
+// Fetch recent messages for a conversation (internal JWT)
+router.get('/:conversation_id/history', authenticateToken, getHistory);
 
 // List conversations for the current user (JWT required), optional division filter
 router.get('/', authenticateToken, listConversations);

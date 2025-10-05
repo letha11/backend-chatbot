@@ -66,49 +66,18 @@ Base path: `/api/v1/auth`
 ### POST /api/v1/auth/register
 Register a new admin user.
 
+**Status:** DISABLED (commented out in routes)  
 **Authentication:** None required  
 **Request Body:**
 ```json
 {
   "username": "string (3-30 chars, alphanumeric)",
-  "password": "string (min 6 chars)",
-  "role": "admin | super_admin" // optional, defaults to "admin"
+  "password": "string (min 5 chars)",
+  "role": "admin | super_admin | user" // optional, defaults to "user"
 }
 ```
 
-**Example Request:**
-```json
-{
-  "username": "admin",
-  "password": "admin123456",
-  "role": "admin"
-}
-```
-
-**Example Success Response:**
-```json
-{
-  "status": "success",
-  "message": "User registered successfully",
-  "data": {
-    "user": {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
-      "username": "admin",
-      "role": "admin"
-    }
-  },
-  "timestamp": "2024-01-01T12:00:00.000Z"
-}
-```
-
-**Example Error Response:**
-```json
-{
-  "status": "error",
-  "error": "Username already exists",
-  "timestamp": "2024-01-01T12:00:00.000Z"
-}
-```
+**Note:** This endpoint is currently disabled in the implementation. User registration should be done through the user management endpoints by super_admin users.
 
 ### POST /api/v1/auth/login
 Authenticate user and receive JWT token.
@@ -136,9 +105,10 @@ Authenticate user and receive JWT token.
   "status": "success",
   "message": "Login successful",
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjYxNDE3NDAwMCIsInVzZXJuYW1lIjoiYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE2NDA5OTUyMDAsImV4cCI6MTY0MTA4MTYwMH0.abc123def456ghi789",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAiLCJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNjQwOTk1MjAwLCJleHAiOjE2NDEwODE2MDB9.abc123def456ghi789",
     "user": {
       "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "Admin User",
       "username": "admin",
       "role": "admin"
     }
@@ -172,11 +142,11 @@ Authorization: Bearer <jwt_token>
   "message": "User profile retrieved successfully",
   "data": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
+    "name": "Admin User",
     "username": "admin",
     "role": "admin",
     "is_active": true,
-    "created_at": "2024-01-01T10:00:00.000Z",
-    "updated_at": "2024-01-01T10:00:00.000Z"
+    "created_at": "2024-01-01T10:00:00.000Z"
   },
   "timestamp": "2024-01-01T12:00:00.000Z"
 }
@@ -576,7 +546,9 @@ Process a chat query using RAG pipeline (proxies to FastAPI ML service).
 ```json
 {
   "division_id": "UUID (required)",
-  "query": "string (1-2000 chars, required)"
+  "query": "string (1-2000 chars, required)",
+  "conversation_id": "UUID (optional)",
+  "title": "string (optional)"
 }
 ```
 
@@ -584,7 +556,9 @@ Process a chat query using RAG pipeline (proxies to FastAPI ML service).
 ```json
 {
   "division_id": "456e7890-e12b-34c5-d678-901234567890",
-  "query": "What are the safety protocols for handling electrical equipment?"
+  "query": "What are the safety protocols for handling electrical equipment?",
+  "conversation_id": "789e0123-e45f-67g8-h901-234567890123",
+  "title": "Safety Protocols Discussion"
 }
 ```
 
@@ -610,9 +584,13 @@ Process a chat query using RAG pipeline (proxies to FastAPI ML service).
         "preview": "Testing circuits is essential before any maintenance. Use a multimeter to verify that circuits are de-energized. Never assume a circuit is safe without proper testing..."
       }
     ],
-    "division_id": "456e7890-e12b-34c5-d678-901234567890",
+    "division": {
+      "id": "456e7890-e12b-34c5-d678-901234567890",
+      "name": "Engineering"
+    },
     "model_used": "openai/gpt-oss-120b",
-    "total_sources": 2
+    "total_sources": 2,
+    "conversation_id": "789e0123-e45f-67g8-h901-234567890123"
   },
   "timestamp": "2024-01-01T12:00:00.000Z"
 }
@@ -622,7 +600,259 @@ Process a chat query using RAG pipeline (proxies to FastAPI ML service).
 ```json
 {
   "status": "error",
-  "error": "No active documents found in the specified division",
+  "error": "No relevant documents found for this query",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+---
+
+## Conversation Management
+
+Base path: `/api/v1/conversations`  
+**Authentication:** Bearer token required (except internal endpoints)
+
+### POST /api/v1/conversations/ingest
+Ingest conversation messages (internal API only).
+
+**Authentication:** Internal API key required (`x-internal-api-key` header)  
+**Request Body:**
+```json
+{
+  "conversation_id": "UUID (optional)",
+  "division_id": "UUID (optional)",
+  "title": "string (required when creating new conversation)",
+  "user_id": "UUID (optional)",
+  "messages": [
+    {
+      "role": "user | assistant | system",
+      "content": "string"
+    }
+  ]
+}
+```
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Conversation messages ingested",
+  "data": {
+    "conversation_id": "789e0123-e45f-67g8-h901-234567890123",
+    "title": "Safety Protocols Discussion",
+    "inserted_messages": 2
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### GET /api/v1/conversations/:conversation_id/history
+Get conversation history for a specific conversation.
+
+**Authentication:** Bearer token required  
+**Path Parameters:**
+- `conversation_id`: UUID of the conversation
+
+**Query Parameters:**
+- `limit`: integer (optional, max 20, default 6)
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Conversation history retrieved successfully",
+  "data": {
+    "conversation": {
+      "id": "789e0123-e45f-67g8-h901-234567890123",
+      "title": "Safety Protocols Discussion",
+      "division_id": "456e7890-e12b-34c5-d678-901234567890",
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "created_at": "2024-01-01T10:00:00.000Z"
+    },
+    "messages": [
+      {
+        "id": "msg-001",
+        "role": "user",
+        "content": "What are the safety protocols?",
+        "created_at": "2024-01-01T10:05:00.000Z"
+      },
+      {
+        "id": "msg-002",
+        "role": "assistant",
+        "content": "Based on the technical manual...",
+        "created_at": "2024-01-01T10:05:30.000Z"
+      }
+    ]
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### GET /api/v1/conversations
+List conversations for the current user.
+
+**Authentication:** Bearer token required  
+**Query Parameters:**
+- `division_id`: UUID (optional) - Filter by division
+- `limit`: integer (optional, max 200, default 50)
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Conversations retrieved successfully",
+  "data": {
+    "conversations": [
+      {
+        "id": "789e0123-e45f-67g8-h901-234567890123",
+        "title": "Safety Protocols Discussion",
+        "division_id": "456e7890-e12b-34c5-d678-901234567890",
+        "user_id": "123e4567-e89b-12d3-a456-426614174000",
+        "created_at": "2024-01-01T10:00:00.000Z",
+        "updated_at": "2024-01-01T10:05:30.000Z"
+      }
+    ]
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+---
+
+## User Management
+
+Base path: `/api/v1/users`  
+**Authentication:** Bearer token + super_admin role required
+
+### GET /api/v1/users
+List all users.
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Users retrieved successfully",
+  "data": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "name": "Admin User",
+      "username": "admin",
+      "role": "admin",
+      "is_active": true,
+      "created_at": "2024-01-01T10:00:00.000Z",
+      "updated_at": "2024-01-01T10:00:00.000Z"
+    }
+  ],
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### GET /api/v1/users/:id
+Get a specific user by UUID.
+
+**Path Parameters:**
+- `id`: UUID of the user
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "User retrieved successfully",
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "name": "Admin User",
+    "username": "admin",
+    "role": "admin",
+    "is_active": true,
+    "created_at": "2024-01-01T10:00:00.000Z",
+    "updated_at": "2024-01-01T10:00:00.000Z"
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### POST /api/v1/users
+Create a new user.
+
+**Request Body:**
+```json
+{
+  "name": "string (optional)",
+  "username": "string (3-30 chars, alphanumeric, required)",
+  "password": "string (min 5 chars, required)",
+  "role": "admin | super_admin | user (optional, defaults to 'user')",
+  "is_active": "boolean (optional, defaults to true)"
+}
+```
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "User created",
+  "data": {
+    "user": {
+      "id": "456e7890-e12b-34c5-d678-901234567890",
+      "name": "New User",
+      "username": "newuser",
+      "role": "user",
+      "is_active": true,
+      "created_at": "2024-01-01T12:00:00.000Z",
+      "updated_at": "2024-01-01T12:00:00.000Z"
+    }
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+### PUT /api/v1/users/:id
+Update an existing user.
+
+**Path Parameters:**
+- `id`: UUID of the user
+
+**Request Body:** (all fields optional, at least one required)
+```json
+{
+  "name": "string (optional)",
+  "username": "string (3-30 chars, alphanumeric)",
+  "password": "string (min 5 chars)",
+  "role": "admin | super_admin | user",
+  "is_active": "boolean"
+}
+```
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "User updated",
+  "data": {
+    "user": {
+      "id": "456e7890-e12b-34c5-d678-901234567890",
+      "name": "Updated User",
+      "username": "updateduser",
+      "role": "admin",
+      "is_active": true,
+      "created_at": "2024-01-01T12:00:00.000Z",
+      "updated_at": "2024-01-01T12:05:00.000Z"
+    }
+  },
+  "timestamp": "2024-01-01T12:05:00.000Z"
+}
+```
+
+### DELETE /api/v1/users/:id
+Delete a user.
+
+**Path Parameters:**
+- `id`: UUID of the user
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "User deleted",
   "timestamp": "2024-01-01T12:00:00.000Z"
 }
 ```
@@ -748,7 +978,10 @@ Process chat queries using Retrieval-Augmented Generation.
 ```json
 {
   "division_id": "UUID (required)",
-  "query": "string (1-2000 chars, required)"
+  "query": "string (1-2000 chars, required)",
+  "conversation_id": "UUID (optional)",
+  "title": "string (optional)",
+  "user_id": "UUID (optional)"
 }
 ```
 
@@ -756,7 +989,10 @@ Process chat queries using Retrieval-Augmented Generation.
 ```json
 {
   "division_id": "456e7890-e12b-34c5-d678-901234567890",
-  "query": "How do I configure the database connection settings?"
+  "query": "How do I configure the database connection settings?",
+  "conversation_id": "789e0123-e45f-67g8-h901-234567890123",
+  "title": "Database Configuration Help",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000"
 }
 ```
 
@@ -790,7 +1026,8 @@ Process chat queries using Retrieval-Augmented Generation.
     ],
     "division_id": "456e7890-e12b-34c5-d678-901234567890",
     "model_used": "openai/gpt-oss-120b",
-    "total_sources": 3
+    "total_sources": 3,
+    "conversation_id": "789e0123-e45f-67g8-h901-234567890123"
   },
   "timestamp": "2024-01-01T12:00:00.000Z"
 }

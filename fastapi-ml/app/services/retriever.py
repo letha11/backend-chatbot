@@ -97,12 +97,16 @@ class RAGService:
                     division_id=division_id,
                     model_used=self.llm_model
                 )
+
+            similar_filename_chunks = set()
+            for chunk in similar_chunks:
+                similar_filename_chunks.add(chunk.filename)
             
             # Step 3.5: Fetch conversation history from Express (optional)
             history_messages: List[Dict[str, Any]] = []
             if settings.internal_api_key and conversation_id:
                 try:
-                    url = f"{settings.express_api_url}/api/v1/conversations/{conversation_id}/history?limit={settings.conversation_history_limit}"
+                    url = f"{settings.express_api_url}/api/v1/conversations/{conversation_id}/history-internal?limit={settings.conversation_history_limit}"
                     async with httpx.AsyncClient(timeout=10.0) as client:
                         resp = await client.get(url, headers={"x-internal-api-key": settings.internal_api_key})
                         if resp.status_code == 200:
@@ -145,7 +149,7 @@ class RAGService:
                     body: Dict[str, Any] = {
                         "messages": [
                             {"role": "user", "content": query},
-                            {"role": "assistant", "content": answer},
+                            {"role": "assistant", "content": answer, "sources": ",".join([filename for filename in similar_filename_chunks])},
                         ],
                         "division_id": str(division_id),
                     }

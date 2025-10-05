@@ -29,6 +29,9 @@ export class ConversationMessage {
   @Column({ type: 'text' })
   content: string;
 
+  @Column({ type: 'text', default: '' })
+  sources: string;
+
   @Index()
   @CreateDateColumn({ type: 'timestamp with time zone' })
   created_at: Date;

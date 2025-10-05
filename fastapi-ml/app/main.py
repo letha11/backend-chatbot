@@ -230,15 +230,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             data={
                 "query": result.query,
                 "answer": result.answer,
-                "sources": [
-                    {
-                        "filename": source.filename,
-                        "chunk_index": source.chunk_index,
-                        "distance": source.distance,
-                        "preview": source.chunk_text[:200] + "..." if len(source.chunk_text) > 200 else source.chunk_text
-                    }
-                    for source in result.sources
-                ],
+                "sources": ','.join([source.filename for source in result.sources]),
                 "division_id": str(result.division_id),
                 "model_used": result.model_used,
                 "total_sources": len(result.sources),
