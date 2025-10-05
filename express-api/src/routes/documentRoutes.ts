@@ -14,6 +14,7 @@ import {
   toggleDocumentSchema, 
   uuidSchema 
 } from '../utils/validation';
+import { config } from '../config/environment';
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.use(authenticateToken);
 
 router.post('/upload', 
   upload.single('file'), 
-  validateBody(uploadDocumentSchema), 
+   validateBody(uploadDocumentSchema), 
   uploadDocument
 );
 router.get('/', getAllDocuments);

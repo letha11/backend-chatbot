@@ -9,13 +9,17 @@ import { config } from '../config/environment';
 import { ResponseHandler } from '../utils/response';
 
 export const chat = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { division_id, query, conversation_id, title } = req.body;
+  let { division_id, query, conversation_id, title } = req.body;
+  
+  const divisionRepository = AppDataSource.getRepository(Division);
+  
+  if (!config.features.division) {
+    division_id = (await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } }))?.id;
+  }
   
   if (!division_id || !query) {
     return ResponseHandler.validationError(res, 'Division ID and query are required');
   }
-  
-  const divisionRepository = AppDataSource.getRepository(Division);
   
   // Verify division exists and is active
   const division = await divisionRepository.findOne({ 

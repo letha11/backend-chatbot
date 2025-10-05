@@ -38,6 +38,7 @@ app.use('/', routes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+
 // Initialize services and start server
 const startServer = async () => {
   try {

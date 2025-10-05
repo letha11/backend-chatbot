@@ -15,7 +15,7 @@ import { config } from '../config/environment';
 import { ResponseHandler } from '../utils/response';
 
 export const uploadDocument = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { division_id } = req.body;
+  let { division_id } = req.body;
   const file = req.file;
   
   if (!file) {
@@ -25,15 +25,24 @@ export const uploadDocument = asyncHandler(async (req: AuthenticatedRequest, res
   const documentRepository = AppDataSource.getRepository(Document);
   const divisionRepository = AppDataSource.getRepository(Division);
   
+  let division: Division | null = null;
+
+  if (!config.features.division) {
+    division = await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } });
+  } else {
+    division = await divisionRepository.findOne({ where: { id: division_id, is_active: true } });
+  }
+  
   // Verify division exists and is active
-  const division = await divisionRepository.findOne({ 
-    where: { id: division_id, is_active: true } 
-  });
+  // const division = await divisionRepository.findOne({ 
+  //   where: { id: division_id, is_active: true } 
+  // });
   
   if (!division) {
     return ResponseHandler.notFound(res, 'Division not found or inactive');
   }
   
+  division_id = division.id;
   // Generate unique filename
   const fileExtension = path.extname(file.originalname);
   const fileName = `${uuidv4()}${fileExtension}`;
@@ -96,14 +105,26 @@ export const getAllDocuments = asyncHandler(async (req: AuthenticatedRequest, re
   const { division_id, is_active } = req.query;
   
   const documentRepository = AppDataSource.getRepository(Document);
+  const divisionRepository = AppDataSource.getRepository(Division);
+
+  let division: Division | null = null;
+
+  if (!config.features.division) {
+    division = await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } });
+  } else {
+    division = await divisionRepository.findOne({ where: { id: division_id as string, is_active: true } });
+  }
+
+  if (!division) {
+    return ResponseHandler.notFound(res, 'Division not found or inactive');
+  }
+
   
   const queryBuilder = documentRepository.createQueryBuilder('document')
     .leftJoinAndSelect('document.division', 'division')
     .orderBy('document.created_at', 'DESC');
   
-  if (division_id) {
-    queryBuilder.andWhere('document.division_id = :division_id', { division_id });
-  }
+  queryBuilder.andWhere('document.division_id = :division_id', { division_id: division.id });
   
   if (is_active !== undefined) {
     queryBuilder.andWhere('document.is_active = :is_active', { is_active });

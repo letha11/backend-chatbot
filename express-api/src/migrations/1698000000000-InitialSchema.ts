@@ -55,6 +55,21 @@ export class InitialSchema1698000000000 implements MigrationInterface {
       )
     `);
 
+    if (!config.features.division) {
+      await queryRunner.query(`
+        INSERT INTO "divisions" (
+          "name",
+          "description",
+          "is_active"
+        ) VALUES (
+          '${config.features.defaultDivisionName}',
+          'Default division',
+          true
+        )
+        ON CONFLICT DO NOTHING
+      `);
+    }
+
     // Create documents table
     await queryRunner.query(`
       CREATE TABLE "documents" (

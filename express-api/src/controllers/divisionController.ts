@@ -6,6 +6,16 @@ import { AuthenticatedRequest } from '../middlewares/auth';
 import { logger } from '../utils/logger';
 import { ResponseHandler } from '../utils/response';
 import { FindManyOptions } from 'typeorm';
+import { config } from '../config/environment';
+
+export const getDefaultDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const divisionRepository = AppDataSource.getRepository(Division);
+  const division = await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } });
+  if (!division) {
+    return ResponseHandler.notFound(res, 'Default division not found');
+  }
+  return ResponseHandler.success(res, division, 'Default division retrieved successfully');
+});
 
 export const createDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { name, description, is_active } = req.body;

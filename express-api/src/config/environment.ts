@@ -25,6 +25,11 @@ export const config = {
     secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
   },
+
+  features: {
+    division: process.env.DIVISION || false,
+    defaultDivisionName: process.env.DEFAULT_DIVISION_NAME || 'Default',
+  },
   
   minio: {
     endpoint: process.env.MINIO_ENDPOINT || 'localhost',

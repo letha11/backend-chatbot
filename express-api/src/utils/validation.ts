@@ -1,3 +1,4 @@
+import { config } from '../config/environment';
 import Joi from 'joi';
 
 // User validation schemas
@@ -26,7 +27,9 @@ export const updateDivisionSchema = Joi.object({
 }).min(1);
 
 // Document validation schemas
-export const uploadDocumentSchema = Joi.object({
+export const uploadDocumentSchema = (!config.features.division) ? Joi.object({
+  division_id: Joi.optional(),
+}) : Joi.object({
   division_id: Joi.string().uuid().required(),
 });
 
@@ -36,7 +39,7 @@ export const toggleDocumentSchema = Joi.object({
 
 // Chat validation schemas
 export const chatRequestSchema = Joi.object({
-  division_id: Joi.string().uuid().required(),
+  division_id: (!config.features.division) ? Joi.optional() : Joi.string().uuid().required(),
   query: Joi.string().min(1).max(2000).required(),
   conversation_id: Joi.string().uuid().optional(),
 });

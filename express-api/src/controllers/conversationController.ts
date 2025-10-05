@@ -5,10 +5,12 @@ import { ConversationMessage } from '../models/ConversationMessage';
 import { asyncHandler } from '../middlewares/errorHandler';
 import { ResponseHandler } from '../utils/response';
 import { AuthenticatedRequest } from '../middlewares/auth';
+import { config } from '../config/environment';
+import { Division } from '../models/Division';
 
 // Internal ingestion from FastAPI ML
 export const ingestMessage = asyncHandler(async (req: Request, res: Response) => {
-  const { conversation_id, division_id, title, user_id, messages } = req.body as {
+  let { conversation_id, division_id, title, user_id, messages } = req.body as {
     conversation_id?: string;
     division_id?: string | null;
     title?: string;
@@ -22,8 +24,13 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
 
   const conversationRepo = AppDataSource.getRepository(Conversation);
   const messageRepo = AppDataSource.getRepository(ConversationMessage);
+  const divisionRepository = AppDataSource.getRepository(Division);
 
   let conversation: Conversation | null = null;
+
+  if (!config.features.division) {
+    division_id = (await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } }))?.id;
+  }
 
   if (conversation_id) {
     conversation = await conversationRepo.findOne({ where: { id: conversation_id } });
@@ -145,10 +152,15 @@ export const getHistory = asyncHandler(async (req: AuthenticatedRequest, res: Re
 // List conversations for current user, optionally filter by division, order by updated_at desc
 export const listConversations = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
-  const division_id = (req.query.division_id as string) || undefined;
+  let division_id = (req.query.division_id as string) || undefined;
   const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
 
   const conversationRepo = AppDataSource.getRepository(Conversation);
+  const divisionRepository = AppDataSource.getRepository(Division);
+
+  if (!config.features.division) {
+    division_id = (await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } }))?.id;
+  }
 
   const where: any = { user_id: user.id };
   if (division_id) where.division_id = division_id;
