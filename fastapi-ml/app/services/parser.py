@@ -2,21 +2,23 @@
 Document parsing service for various file formats including images with OCR.
 """
 import io
-import csv
+import os
+import uuid
 import re
-from typing import List, Optional, BinaryIO
-import PyPDF2
+from typing import List, Optional
+# import PyPDF2
+import fitz
 from pdfminer.high_level import extract_text as pdfminer_extract_text
 from docx import Document
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter
+import numpy as np
 import pytesseract
 from loguru import logger
 
 from ..models import DocumentChunk
 from ..config import settings
 from .text_cleaner import text_cleaner
-
 
 class DocumentParser:
     """Document parsing service for multiple file formats."""
@@ -31,6 +33,106 @@ class DocumentParser:
         
         # OCR configuration
         self.ocr_config = r'--oem 3 --psm 6'  # Use LSTM OCR Engine Mode with uniform text block
+        # Optional OCR language and whitelist from environment
+        self.ocr_lang = os.getenv('TESSERACT_LANG', 'eng')
+        self.ocr_char_whitelist = os.getenv('TESSERACT_CHAR_WHITELIST')
+
+    def _preprocess_for_ocr(self, image: Image.Image) -> Image.Image:
+        """Apply preprocessing recommended by Tesseract docs to improve OCR quality.
+
+        Steps (inspired by tessdoc [ImproveQuality.md](https://github.com/tesseract-ocr/tessdoc/blob/main/ImproveQuality.md)):
+        - Convert to grayscale
+        - Scale up toward ~300 DPI equivalent (heuristic by upscaling small images)
+        - Auto-contrast to stretch histogram
+        - Median filter to reduce salt-and-pepper noise
+        - Otsu binarization
+        - Sharpen lightly
+        - Deskew using Tesseract OSD angle when reliably detected
+        """
+        # Normalize transparency by compositing over white if present
+        if image.mode in ('RGBA', 'LA') or (hasattr(image, 'info') and image.info.get('transparency') is not None):
+            base = Image.new('RGBA', image.size, (255, 255, 255, 255))
+            image = Image.alpha_composite(base, image.convert('RGBA')).convert('RGB')
+
+        # Convert to grayscale
+        gray = image.convert('L')
+
+        # Heuristic upscaling for low-res images (target small side >= 1200 px)
+        min_side = min(gray.size)
+        if min_side < 1200:
+            scale = 1200 / float(min_side)
+            new_size = (int(gray.width * scale), int(gray.height * scale))
+            gray = gray.resize(new_size, Image.LANCZOS)
+
+        # Auto-contrast
+        gray = ImageOps.autocontrast(gray)
+
+        # Median denoise
+        gray = gray.filter(ImageFilter.MedianFilter(size=3))
+
+        # Otsu binarization using numpy
+        np_img = np.asarray(gray)
+        # Compute histogram and between-class variance to get Otsu threshold
+        hist, bin_edges = np.histogram(np_img.flatten(), bins=256, range=(0, 255))
+        total = np_img.size
+        sum_total = np.dot(np.arange(256), hist)
+        sumB = 0.0
+        wB = 0.0
+        max_var = 0.0
+        threshold = 127
+        for t in range(256):
+            wB += hist[t]
+            if wB == 0:
+                continue
+            wF = total - wB
+            if wF == 0:
+                break
+            sumB += t * hist[t]
+            mB = sumB / wB
+            mF = (sum_total - sumB) / wF
+            between_var = wB * wF * (mB - mF) ** 2
+            if between_var > max_var:
+                max_var = between_var
+                threshold = t
+        binary = (np_img > threshold).astype(np.uint8) * 255
+        # Ensure white background and black text (invert if needed)
+        num_white = int((binary == 255).sum())
+        num_black = int((binary == 0).sum())
+        if num_black > num_white:
+            binary = 255 - binary
+        bin_img = Image.fromarray(binary, mode='L')
+
+        # Light sharpen to improve edge clarity after binarization
+        bin_img = bin_img.filter(ImageFilter.UnsharpMask(radius=1, percent=150, threshold=3))
+
+        # Deskew using Tesseract's OSD
+        try:
+            angle = self._estimate_skew_angle(bin_img)
+            # Only rotate if angle is significant
+            if angle and abs(angle) >= 0.5:
+                # Expand True to avoid cropping
+                bin_img = bin_img.rotate(-angle, resample=Image.BICUBIC, expand=True, fillcolor=255)
+        except Exception as e:
+            logger.warning(f"Deskew skipped due to OSD error: {e}")
+        
+        return bin_img
+
+    def _estimate_skew_angle(self, image: Image.Image) -> float:
+        """Estimate skew angle using pytesseract OSD.
+
+        Returns angle in degrees, positive for counter-clockwise.
+        """
+        try:
+            osd = pytesseract.image_to_osd(image)
+            # Typical line in OSD output: 'Rotate: 270\n'
+            match = re.search(r"Rotate:\s*(\d+)", osd)
+            if match:
+                angle = int(match.group(1))
+                # Tesseract returns one of {0, 90, 180, 270}; keep as float
+                return float(angle if angle != 270 else -90)
+        except Exception as e:
+            logger.debug(f"OSD angle detection failed: {e}")
+        return 0.0
     
     async def parse_document(
         self, 
@@ -115,28 +217,83 @@ class DocumentParser:
             logger.error(f"Error parsing TXT file: {e}")
             raise
     
+    def _recover_pix(self, doc, item):
+        xref = item[0]  # xref of PDF image
+        smask = item[1]  # xref of its /SMask
+
+        # special case: /SMask or /Mask exists
+        if smask > 0:
+            pix0 = fitz.Pixmap(doc.extract_image(xref)["image"])
+            if pix0.alpha:  # catch irregular situation
+                pix0 = fitz.Pixmap(pix0, 0)  # remove alpha channel
+            mask = fitz.Pixmap(doc.extract_image(smask)["image"])
+
+            try:
+                pix = fitz.Pixmap(pix0, mask)
+            except Exception:  # fallback to original base image in case of problems
+                pix = fitz.Pixmap(doc.extract_image(xref)["image"])
+
+            if pix0.n > 3:
+                ext = "pam"
+            else:
+                ext = "png"
+
+            return {  # create dictionary expected by caller
+                "ext": ext,
+                "colorspace": pix.colorspace.n,
+                "image": pix.tobytes(ext),
+            }
+
+        # special case: /ColorSpace definition exists
+        # to be sure, we convert these cases to RGB PNG images
+        if "/ColorSpace" in doc.xref_object(xref, compressed=True):
+            pix = fitz.Pixmap(doc, xref)
+            pix = fitz.Pixmap(fitz.csRGB, pix)
+            return {  # create dictionary expected by caller
+                "ext": "png",
+                "colorspace": 3,
+                "image": pix.tobytes("png"),
+            }
+
+        return doc.extract_image(xref)
+
     async def _parse_pdf(self, file_content: bytes) -> str:
         """Parse PDF file using multiple methods."""
         text = ""
-        
+
         try:
-            # Method 1: Try PyPDF2 first (faster)
-            file_stream = io.BytesIO(file_content)
-            pdf_reader = PyPDF2.PdfReader(file_stream)
-            
-            for page_num, page in enumerate(pdf_reader.pages):
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-                except Exception as e:
-                    logger.warning(f"PyPDF2 failed on page {page_num}: {e}")
-            
-            # If PyPDF2 didn't extract much text, try pdfminer
-            if len(text.strip()) < 100:  # Threshold for "not much text"
-                logger.info("PyPDF2 extracted minimal text, trying pdfminer")
-                file_stream = io.BytesIO(file_content)
-                text = pdfminer_extract_text(file_stream)
+            pdf_reader = fitz.open(stream=file_content, filetype="pdf")
+
+            for page_num, page in enumerate(pdf_reader):
+                blocks = []
+
+                # --- TEXT BLOCKS: use "dict" for richer structure ---
+                for block in page.get_text("dict")["blocks"]:
+                    if "lines" in block:
+                        block_text = ""
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                block_text += span.get("text", "")
+                        blocks.append({
+                            "type": "text",
+                            "bbox": block["bbox"],
+                            "content": block_text.strip()
+                        })
+
+                # FIXME: XREF masih NONE.
+                for block in page.get_text("rawdict")["blocks"]:
+                    if block.get("type") == 1 or "image" in block:
+                        extracted_content = await self._parse_image(block.get("image"), f"page{page_num}_img")
+                        blocks.append({
+                            "type": "image",
+                            "bbox": block["bbox"],
+                            "content": extracted_content
+                        })
+
+                blocks = sorted(blocks, key=lambda b: (b["bbox"][1], b["bbox"][0]))
+                text += "\n".join(
+                    b["content"] for b in blocks if b.get("content")
+                )
             
             logger.info(f"Successfully extracted {len(text)} characters from PDF")
             return text
@@ -265,10 +422,20 @@ class DocumentParser:
             # Log image properties
             logger.info(f"Image properties - Size: {image.size}, Mode: {image.mode}, Format: {image.format}")
             
+            # Preprocess image per tessdoc recommendations
+            preprocessed = self._preprocess_for_ocr(image)
+            logger.info(f"Preprocessed image size: {preprocessed.size}")
+
+            # Build OCR config with optional language and whitelist
+            base_config = self.ocr_config
+            if self.ocr_char_whitelist:
+                base_config = base_config + f" -c tessedit_char_whitelist={self.ocr_char_whitelist}"
+            lang = self.ocr_lang or 'eng'
+
             # Perform OCR using pytesseract
             try:
                 # First try with default configuration
-                text = pytesseract.image_to_string(image, config=self.ocr_config)
+                text = pytesseract.image_to_string(preprocessed, lang=lang, config=base_config)
                 logger.info(f"OCR extracted {len(text)} characters with default config")
                 
                 # If we got very little text, try with different PSM modes
@@ -279,14 +446,19 @@ class DocumentParser:
                     alternative_configs = [
                         r'--oem 3 --psm 3',  # Fully automatic page segmentation
                         r'--oem 3 --psm 4',  # Assume a single column of text
+                        r'--oem 3 --psm 7',  # Treat as a single text line
                         r'--oem 3 --psm 8',  # Treat as a single word
-                        r'--oem 3 --psm 13'  # Raw line. Treat as a single text line
+                        r'--oem 3 --psm 11', # Sparse text
+                        r'--oem 3 --psm 13'  # Raw line
                     ]
                     
                     best_text = text
                     for config in alternative_configs:
                         try:
-                            alt_text = pytesseract.image_to_string(image, config=config)
+                            cfg = config
+                            if self.ocr_char_whitelist:
+                                cfg = cfg + f" -c tessedit_char_whitelist={self.ocr_char_whitelist}"
+                            alt_text = pytesseract.image_to_string(preprocessed, lang=lang, config=cfg)
                             if len(alt_text.strip()) > len(best_text.strip()):
                                 best_text = alt_text
                                 logger.info(f"Better OCR result with config: {config}")
@@ -299,7 +471,7 @@ class DocumentParser:
                 logger.error(f"OCR processing failed: {ocr_error}")
                 # Try with minimal configuration as fallback
                 try:
-                    text = pytesseract.image_to_string(image)
+                    text = pytesseract.image_to_string(preprocessed, lang=lang)
                     logger.info("Fallback OCR with minimal config succeeded")
                 except Exception as fallback_error:
                     logger.error(f"Fallback OCR also failed: {fallback_error}")

@@ -53,4 +53,4 @@ pytest-asyncio>=0.23.2,<1.0.0
 black>=23.12.1,<25.0.0
 flake8>=7.0.0,<8.0.0
 
-# Removed duplicate ChromaDB entry and Pinecone
+PyMuPDF>=1.26.4
