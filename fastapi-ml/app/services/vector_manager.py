@@ -99,6 +99,9 @@ class VectorManager:
             # Convert SimilarChunk objects to dict format for backward compatibility
             results = []
             for chunk in similar_chunks:
+                if (chunk.distance > 0.8):
+                    continue
+
                 results.append({
                     "chunk_text": chunk.chunk_text,
                     "chunk_index": chunk.chunk_index,
