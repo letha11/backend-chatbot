@@ -10,6 +10,7 @@ import { AuthenticatedRequest } from '../middlewares/auth';
 import { storageService } from '../config/storage';
 import { logger } from '../utils/logger';
 import { vectorService } from '../services/vectorService';
+import { sseService } from '../services/sseClientService';
 import axios from 'axios';
 import { config } from '../config/environment';
 import { ResponseHandler } from '../utils/response';
@@ -68,6 +69,18 @@ export const uploadDocument = asyncHandler(async (req: AuthenticatedRequest, res
     
     await documentRepository.save(document);
     
+    // Send initial SSE event to notify frontend that parsing is starting
+    sseService.sendDocumentProcessingEvent(
+      document.id,
+      'parsing_started',
+      'Document parsing has started',
+      {
+        filename: document.original_filename,
+        fileType: document.file_type,
+        divisionId: document.division_id
+      }
+    );
+
     // Trigger parsing via FastAPI microservice
     try {
       await axios.post(`${config.fastapi.url}/parse-document`, {
@@ -81,6 +94,17 @@ export const uploadDocument = asyncHandler(async (req: AuthenticatedRequest, res
       logger.error(`Failed to initiate parsing for document ${document.id}:`, parseError);
       // Update document status to parsing_failed
       await documentRepository.update(document.id, { status: 'parsing_failed' });
+      
+      // Send SSE event for parsing failure
+      sseService.sendDocumentProcessingEvent(
+        document.id,
+        'parsing_failed',
+        'Failed to start document parsing',
+        {
+          filename: document.original_filename,
+          error: parseError instanceof Error ? parseError.message : 'Unknown error'
+        }
+      );
     }
     
     logger.info(`Document uploaded: ${file.originalname} by user ${req.user!.username}`);
@@ -109,22 +133,31 @@ export const getAllDocuments = asyncHandler(async (req: AuthenticatedRequest, re
 
   let division: Division | null = null;
 
+  console.log('config.features.division', config.features.division);
+  console.log('division_id', division_id);
+  console.log('is_active', is_active);
+  
+  // Handle division logic based on configuration and query parameters
   if (!config.features.division) {
+    // If division feature is disabled, use default division
     division = await divisionRepository.findOne({ where: { name: config.features.defaultDivisionName } });
-  } else {
+  } else if (division_id) {
+    // If division feature is enabled and division_id is provided, find specific division
     division = await divisionRepository.findOne({ where: { id: division_id as string, is_active: true } });
+    if (!division) {
+      return ResponseHandler.notFound(res, 'Division not found or inactive');
+    }
   }
-
-  if (!division) {
-    return ResponseHandler.notFound(res, 'Division not found or inactive');
-  }
-
+  // If division feature is enabled but no division_id provided, query all documents
   
   const queryBuilder = documentRepository.createQueryBuilder('document')
     .leftJoinAndSelect('document.division', 'division')
     .orderBy('document.created_at', 'DESC');
   
-  queryBuilder.andWhere('document.division_id = :division_id', { division_id: division.id });
+  // Only filter by division if we have a specific division
+  if (division) {
+    queryBuilder.andWhere('document.division_id = :division_id', { division_id: division.id });
+  }
   
   if (is_active !== undefined) {
     queryBuilder.andWhere('document.is_active = :is_active', { is_active });

@@ -20,6 +20,7 @@ from .services.parser import document_parser
 from .services.embedder import embedding_service
 from .services.retriever import rag_service
 from .services.vector_factory import vector_service_factory
+from .services.webhook_service import webhook_service
 from .routes import vector_routes
 
 
@@ -267,24 +268,39 @@ async def process_document_parsing(
         # Update status to parsing
         await db_manager.update_document_status(document_id, "parsing")
         
+        # Notify Express backend that parsing has started
+        await webhook_service.notify_parsing_started(str(document_id), filename, file_type)
+        
         # Parse document
         chunks = await document_parser.parse_document(file_content, file_type, filename)
         if not chunks:
             logger.error(f"Failed to parse document {document_id}")
             await db_manager.update_document_status(document_id, "parsing_failed")
+            await webhook_service.notify_processing_failed(
+                str(document_id), filename, "Failed to parse document", "parsing"
+            )
             return
         
         # Update status to parsed
         await db_manager.update_document_status(document_id, "parsed")
         logger.info(f"Successfully parsed document {document_id} into {len(chunks)} chunks")
         
+        # Notify Express backend that parsing completed
+        await webhook_service.notify_parsing_completed(str(document_id), filename, len(chunks))
+        
         # Generate embeddings
         await db_manager.update_document_status(document_id, "embedding")
+        
+        # Notify Express backend that embedding has started
+        await webhook_service.notify_embedding_started(str(document_id), filename)
         
         embeddings_data = await embedding_service.generate_embeddings(chunks, document_id)
         if not embeddings_data:
             logger.error(f"Failed to generate embeddings for document {document_id}")
             await db_manager.update_document_status(document_id, "embedding_failed")
+            await webhook_service.notify_processing_failed(
+                str(document_id), filename, "Failed to generate embeddings", "embedding"
+            )
             return
         
         # Store embeddings in database
@@ -301,15 +317,24 @@ async def process_document_parsing(
         if not success:
             logger.error(f"Failed to store embeddings for document {document_id}")
             await db_manager.update_document_status(document_id, "embedding_failed")
+            await webhook_service.notify_processing_failed(
+                str(document_id), filename, "Failed to store embeddings", "embedding"
+            )
             return
         
         # Update final status to embedded
         await db_manager.update_document_status(document_id, "embedded")
         logger.info(f"Successfully completed processing for document {document_id}")
         
+        # Notify Express backend that processing completed successfully
+        await webhook_service.notify_embedding_completed(str(document_id), filename, len(embeddings_data))
+        
     except Exception as e:
         logger.error(f"Error in background document processing: {e}")
         await db_manager.update_document_status(document_id, "processing_failed")
+        await webhook_service.notify_processing_failed(
+            str(document_id), filename, str(e), "processing"
+        )
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ export const config = {
   },
 
   features: {
-    division: process.env.DIVISION || false,
+    division: process.env.DIVISION === 'true',
     defaultDivisionName: process.env.DEFAULT_DIVISION_NAME || 'Default',
   },
   

@@ -6,6 +6,7 @@ import chatRoutes from './chatRoutes';
 import conversationRoutes from './conversationRoutes';
 import userRoutes from './userRoutes';
 import { ResponseHandler } from '../utils/response';
+import eventRoutes from './eventRoutes';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.use(`${API_PREFIX}/documents`, documentRoutes);
 router.use(`${API_PREFIX}/chat`, chatRoutes);
 router.use(`${API_PREFIX}/conversations`, conversationRoutes);
 router.use(`${API_PREFIX}/users`, userRoutes);
+router.use(`${API_PREFIX}/events`, eventRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {
