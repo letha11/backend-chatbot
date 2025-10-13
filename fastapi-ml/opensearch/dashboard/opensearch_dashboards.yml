@@ -1,0 +1,3 @@
+server.name: chatbot-opensearch-dashboards-dev
+server.host: "0.0.0.0"
+opensearch.hosts: http://chatbot-opensearch-dev:9200

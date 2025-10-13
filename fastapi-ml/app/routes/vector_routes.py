@@ -13,8 +13,6 @@ router = APIRouter(prefix="/vector", tags=["vector"])
 
 
 # Vector service switching removed - using ChromaDB exclusively
-
-
 class VectorServiceResponse(BaseModel):
     """Response model for vector service operations."""
     success: bool

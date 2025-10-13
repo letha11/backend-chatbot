@@ -12,7 +12,7 @@ import sys
 from .config import settings
 from .database import init_db, db_manager
 from .models import (
-    ParseDocumentRequest, ParseDocumentResponse, ChatRequest, ChatResponse,
+    DeleteDocumentResponse, ParseDocumentRequest, ParseDocumentResponse, ChatRequest, ChatResponse,
     HealthResponse, ErrorResponse
 )
 from .services.storage import storage_service
@@ -21,9 +21,8 @@ from .services.embedder import embedding_service
 from .services.retriever import rag_service
 from .services.vector_factory import vector_service_factory
 from .services.webhook_service import webhook_service
+from .services.opensearch import opensearch_service
 from .routes import vector_routes
-
-
 
 # Configure logging
 logger.remove()  # Remove default handler
@@ -169,7 +168,9 @@ async def parse_document(
             request.document_id,
             file_content,
             request.file_type,
-            document_info["original_filename"]
+            document_info["original_filename"],
+            document_info["division_id"],
+            document_info["is_active"]
         )
         
         return ParseDocumentResponse(
@@ -196,6 +197,22 @@ async def parse_document(
                 error=str(e)
             ).dict()
         )
+
+@app.delete("/delete-document/{document_id}", response_model=DeleteDocumentResponse)
+async def delete_document(document_id: UUID) -> DeleteDocumentResponse:
+    """
+    Delete a document from the database and OpenSearch.
+    """
+    try:
+        await db_manager.delete_document_embeddings(document_id)
+        await opensearch_service.delete_document(document_id)
+        return DeleteDocumentResponse(status="success", message="Document deleted successfully", data={
+            "document_id": str(document_id)
+        })
+    except Exception as e:
+        logger.error(f"Error in delete_document: {e}")
+        raise HTTPException(status_code=500, detail=ErrorResponse(status="error", message="Internal server error during document deletion", error=str(e)).dict())
+
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -231,7 +248,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             data={
                 "query": result.query,
                 "answer": result.answer,
-                "sources": ','.join([source.filename for source in result.sources]),
+                "sources": ','.join(set([source.filename for source in result.sources])),
                 "division_id": str(result.division_id),
                 "model_used": result.model_used,
                 "total_sources": len(result.sources),
@@ -257,7 +274,9 @@ async def process_document_parsing(
     document_id: UUID,
     file_content: bytes,
     file_type: str,
-    filename: str
+    filename: str,
+    division_id: UUID,
+    is_active: bool
 ) -> None:
     """
     Background task to process document parsing and embedding generation.
@@ -294,7 +313,7 @@ async def process_document_parsing(
         # Notify Express backend that embedding has started
         await webhook_service.notify_embedding_started(str(document_id), filename)
         
-        embeddings_data = await embedding_service.generate_embeddings(chunks, document_id)
+        embeddings_data = await embedding_service.generate_embeddings(chunks, document_id, filename, division_id, is_active)
         if not embeddings_data:
             logger.error(f"Failed to generate embeddings for document {document_id}")
             await db_manager.update_document_status(document_id, "embedding_failed")
@@ -302,6 +321,9 @@ async def process_document_parsing(
                 str(document_id), filename, "Failed to generate embeddings", "embedding"
             )
             return
+
+        logger.info(f"Successfully generated {len(embeddings_data)} embeddings for document {document_id}")
+        logger.info(f"Embeddings data: {embeddings_data}")
         
         # Store embeddings in database
         embeddings_dict_list = []
@@ -310,7 +332,10 @@ async def process_document_parsing(
                 "document_id": embedding_data.document_id,  # Already a UUID, no conversion needed
                 "chunk_text": embedding_data.chunk_text,
                 "embedding": embedding_data.embedding,
-                "chunk_index": embedding_data.chunk_index
+                "chunk_index": embedding_data.chunk_index,
+                "division_id": embedding_data.division_id,
+                "filename": embedding_data.filename,
+                "is_active": embedding_data.is_active
             })
         
         success = await db_manager.store_embeddings(embeddings_dict_list)
@@ -321,6 +346,9 @@ async def process_document_parsing(
                 str(document_id), filename, "Failed to store embeddings", "embedding"
             )
             return
+
+        # Store documents in OpenSearch
+        await opensearch_service.store_document(embeddings_data)
         
         # Update final status to embedded
         await db_manager.update_document_status(document_id, "embedded")

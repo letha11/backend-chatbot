@@ -43,6 +43,10 @@ class ParseDocumentResponse(StandardResponse):
     data: Optional[Dict[str, Any]] = Field(None, description="Parsing result data")
 
 
+class DeleteDocumentResponse(StandardResponse):
+    """Response model for document deletion."""
+    data: Optional[Dict[str, Any]] = Field(None, description="Deletion result data")
+
 class ChatResponse(StandardResponse):
     """Response model for chat endpoint."""
     data: Optional[Dict[str, Any]] = Field(None, description="Chat response data")
@@ -112,7 +116,15 @@ class ChatResult(BaseModel):
     division_id: UUID = Field(..., description="Division ID that was searched")
     model_used: str = Field(..., description="LLM model used for generation")
     conversation_id: Optional[UUID] = Field(None, description="Conversation ID for subsequent turns")
-
+class OpenSearchResult(BaseModel):
+    """Model for OpenSearch result."""
+    chunk_text: str = Field(..., description="Chunk text")
+    chunk_index: int = Field(..., description="Chunk index")
+    filename: str = Field(..., description="Filename")
+    is_active: bool = Field(..., description="Whether the document is active")
+    score: float = Field(..., description="Score")
+    document_id: UUID = Field(..., description="Document UUID")
+    division_id: UUID = Field(..., description="Division UUID")
 
 # Configuration Models
 class ModelConfig(BaseModel):

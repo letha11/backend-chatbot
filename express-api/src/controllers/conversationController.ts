@@ -48,7 +48,7 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
     conversation = await conversationRepo.save(conversation);
   }
 
-const toInsert = messages.map((m) =>
+  const toInsert = messages.map((m) =>
     messageRepo.create({
       conversation_id: conversation!.id,
       role: m.role,

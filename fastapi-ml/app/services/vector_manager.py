@@ -6,6 +6,8 @@ from typing import List, Dict, Any
 from uuid import UUID
 from loguru import logger
 
+from app.services.opensearch import opensearch_service
+
 from ..models import EmbeddingData
 
 
@@ -99,7 +101,7 @@ class VectorManager:
             # Convert SimilarChunk objects to dict format for backward compatibility
             results = []
             for chunk in similar_chunks:
-                if (chunk.distance > 0.8):
+                if (chunk.distance > 1.2):
                     continue
 
                 results.append({
@@ -110,6 +112,7 @@ class VectorManager:
                 })
             
             logger.info(f"Found {len(results)} similar chunks in ChromaDB for division {division_id}")
+            logger.info(f"Results: {results}")
             return results
             
         except Exception as e:
@@ -251,6 +254,12 @@ class VectorManager:
                 ids=results['ids'],
                 metadatas=updated_metadatas
             )
+
+            # Update the document active status in OpenSearch
+            response = await opensearch_service.update_document_active_status(document_id, is_active)
+            if not response:
+                logger.error(f"Failed to update document active status in OpenSearch for document {document_id}")
+                return False
             
             logger.info(f"Updated {len(results['ids'])} embeddings for document {document_id} - is_active: {is_active}")
             return True

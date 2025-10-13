@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     chroma_persist_directory: Optional[str] = "./chroma_data"
     chroma_use_persistent: bool = True
     
+    # OpenSearch Configuration
+    opensearch_host: str = "localhost"
+    opensearch_port: int = 9200
+    opensearch_username: str = ""
+    opensearch_password: str = ""
+    
     # Express.js Backend Configuration
     express_api_url: str = "http://localhost:3000"
     internal_api_key: Optional[str] = None

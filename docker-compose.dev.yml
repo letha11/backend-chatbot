@@ -74,12 +74,64 @@ services:
     # Enable hot reloading in development
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  # OpenSearch Dev
+  opensearch-dev:
+    image: opensearchproject/opensearch:latest # Specifying the latest available image - modify if you want a specific version
+    container_name: chatbot-opensearch-dev
+    # env_file:
+    #   - .env
+    environment:
+      - cluster.name=chatbot-opensearch-cluster # Name the cluster
+      - node.name=chatbot-opensearch-node1 # Name the node that will run in this container
+      - discovery.seed_hosts=chatbot-opensearch-node1 # Nodes to look for when discovering the cluster
+      - discovery.type=single-node #FIXME: Remove this in production
+      # - cluster.initial_cluster_manager_nodes=chatbot-opensearch-node1 # Nodes eligible to serve as cluster manager
+      - plugins.security.disabled=true #FIXME: Remove this in production
+      - bootstrap.memory_lock=true # Disable JVM heap memory swapping
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" # Set min and max JVM heap sizes to at least 50% of system RAM
+      # - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}    # Sets the demo admin user password when using demo configuration, required for OpenSearch 2.12 and later
+    ulimits:
+      memlock:
+        soft: -1 # Set memlock to unlimited (no soft or hard limit)
+        hard: -1
+      nofile:
+        soft: 65536 # Maximum number of open files for the opensearch user - set to at least 65536
+        hard: 65536
+    volumes:
+      - opensearch-data-dev:/usr/share/opensearch/data # Creates volume called opensearch-data1 and mounts it to the container
+    ports:
+      - 9200:9200 # REST API
+      - 9600:9600 # Performance Analyzer
+    networks:
+      - chatbot-dev-network # All of the containers will join the same Docker bridge network
+
+  opensearch-dashboards-dev:
+    # build:
+    #   context: ./fastapi-ml/opensearch/dashboard
+    #   dockerfile: Dockerfile
+    # env_file:
+      # - .env
+    # image: opensearchproject/opensearch-dashboards:latest # Make sure the version of opensearch-dashboards matches the version of opensearch installed on other nodes
+    image: opensearch-dashboards-no-security # Make sure the version of opensearch-dashboards matches the version of opensearch installed on other nodes
+    container_name: chatbot-opensearch-dashboards-dev
+    ports:
+      - 5601:5601 # Map host port 5601 to container port 5601
+    expose:
+      - "5601" # Expose port 5601 for web access to OpenSearch Dashboards
+    environment:
+      OPENSEARCH_HOSTS: '["http://chatbot-opensearch-dev:9200"]' # Define the OpenSearch nodes that OpenSearch Dashboards will query
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: true #FIXME: Remove this in production
+    networks:
+      - chatbot-dev-network
+
 volumes:
   postgres_dev_data:
     driver: local
   minio_dev_data:
     driver: local
   chromadb_dev_data:
+    driver: local
+  opensearch-data-dev:
     driver: local
 
 networks:

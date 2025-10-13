@@ -3,6 +3,7 @@ Embedding generation service using SentenceTransformers or OpenAI.
 """
 import asyncio
 from typing import List, Optional, Union
+from uuid import UUID
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import openai
@@ -45,7 +46,10 @@ class EmbeddingService:
     async def generate_embeddings(
         self, 
         chunks: List[DocumentChunk], 
-        document_id: str
+        document_id: str,
+        filename: str,
+        division_id: UUID,
+        is_active: bool
     ) -> List[EmbeddingData]:
         """
         Generate embeddings for document chunks.
@@ -53,7 +57,9 @@ class EmbeddingService:
         Args:
             chunks: List of document chunks
             document_id: UUID of the document
-            
+            filename: Original filename of the document
+            division_id: UUID of the division
+            is_active: Whether the document is active
         Returns:
             List of EmbeddingData objects
         """
@@ -84,7 +90,10 @@ class EmbeddingService:
                     document_id=document_id,
                     chunk_text=chunk.text,
                     embedding=embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
-                    chunk_index=chunk.index
+                    chunk_index=chunk.index,
+                    is_active=is_active,
+                    filename=filename,
+                    division_id=division_id,
                 )
                 embedding_data_list.append(embedding_data)
             

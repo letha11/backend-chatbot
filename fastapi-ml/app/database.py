@@ -2,7 +2,7 @@
 Database connection and models for the FastAPI ML microservice.
 """
 from typing import List, Optional, Dict, Any
-from sqlalchemy import create_engine, text, Column, String, Boolean, DateTime, Integer, Text
+from sqlalchemy import create_engine, text, Column, String, Boolean, DateTime, Text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import UUID
@@ -123,6 +123,37 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error getting document: {e}")
             return None
+    
+    @staticmethod
+    async def get_documents_by_division(division_id: uuid.UUID) -> List[Dict[str, Any]]:
+        """Get all active documents in a division."""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("""
+                        SELECT id, division_id, original_filename, storage_path, file_type, status, is_active
+                        FROM documents 
+                        WHERE division_id = :division_id AND is_active = true
+                        ORDER BY original_filename
+                    """),
+                    {"division_id": division_id}
+                )
+                rows = result.fetchall()
+                documents = []
+                for row in rows:
+                    documents.append({
+                        "id": row[0],
+                        "division_id": row[1],
+                        "original_filename": row[2],
+                        "storage_path": row[3],
+                        "file_type": row[4],
+                        "status": row[5],
+                        "is_active": row[6]
+                    })
+                return documents
+        except Exception as e:
+            logger.error(f"Error getting documents by division: {e}")
+            return []
     
 # PostgreSQL embedding storage removed - using ChromaDB exclusively
     

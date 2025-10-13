@@ -7,6 +7,7 @@ import asyncio
 from loguru import logger
 
 from .vector_service import VectorService, VectorServiceConfig
+from .hybrid_retriever import hybrid_retriever
 from ..models import SimilarChunk, EmbeddingData
 
 try:
@@ -212,6 +213,54 @@ class ChromaVectorService(VectorService):
         except Exception as e:
             logger.error(f"Failed to search embeddings in ChromaDB: {e}")
             return []
+    
+    async def search_similar_hybrid(
+        self,
+        query: str,
+        query_embedding: List[float],
+        division_id: UUID,
+        top_k: int = 5,
+        use_hybrid: bool = True
+    ) -> List[SimilarChunk]:
+        """
+        Search for similar embeddings using hybrid approach (vector + BM25).
+        
+        Args:
+            query: Original query text for BM25 search
+            query_embedding: Query embedding vector for vector search
+            division_id: Division to search in
+            top_k: Number of results to return
+            use_hybrid: Whether to use hybrid search (default: True)
+            
+        Returns:
+            List of similar chunks
+        """
+        try:
+            if use_hybrid:
+                logger.info(f"Performing hybrid search for division {division_id}")
+                return await hybrid_retriever.search(
+                    query=query,
+                    query_embedding=query_embedding,
+                    division_id=division_id,
+                    top_k=top_k
+                )
+            else:
+                # Fallback to vector-only search
+                logger.info(f"Performing vector-only search for division {division_id}")
+                return await self.search_similar(
+                    query_embedding=query_embedding,
+                    division_id=division_id,
+                    top_k=top_k
+                )
+                
+        except Exception as e:
+            logger.error(f"Failed to perform hybrid search: {e}")
+            # Fallback to vector-only search
+            return await self.search_similar(
+                query_embedding=query_embedding,
+                division_id=division_id,
+                top_k=top_k
+            )
     
     async def delete_embeddings(
         self,

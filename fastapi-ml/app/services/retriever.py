@@ -13,6 +13,7 @@ import httpx
 from ..database import db_manager
 from .embedder import embedding_service
 from .text_cleaner import text_cleaner
+from .hybrid_retriever import hybrid_retriever
 
 
 class RAGService:
@@ -82,21 +83,10 @@ class RAGService:
                 logger.error("Failed to generate query embedding")
                 return None
             
-            # Step 3: Retrieve similar chunks
-            similar_chunks = await self._retrieve_similar_chunks(
-                query_embedding, division_id
+            # Step 3: Retrieve similar chunks using hybrid search
+            similar_chunks = await self._retrieve_similar_chunks_hybrid(
+                query, query_embedding, division_id
             )
-            
-            if not similar_chunks:
-                logger.warning(f"No similar chunks found for division {division_id}")
-                # Return a result indicating no relevant information was found
-                return ChatResult(
-                    query=query,
-                    answer="Maaf, saya tidak dapat menjawab pertanyaan Anda dikarenakan tidak ada informasi yang relevan dalam pemahaman saya.",
-                    sources=[],
-                    division_id=division_id,
-                    model_used=self.llm_model
-                )
 
             similar_filename_chunks = set()
             for chunk in similar_chunks:
@@ -118,7 +108,7 @@ class RAGService:
                     logger.warning(f"Failed to fetch conversation history: {e}")
 
             # Step 4: Generate answer using LLM (use original query for context) + history
-            answer = await self._generate_answer(query, similar_chunks, history_messages)
+            answer = await self._generate_answer(query, similar_chunks, history_messages, division_id)
             if not answer:
                 logger.error("Failed to generate answer")
                 return None
@@ -182,13 +172,50 @@ class RAGService:
             logger.error(f"Error processing chat query: {e}")
             return None
     
-    async def _retrieve_similar_chunks(
+    async def _retrieve_similar_chunks_hybrid(
+        self, 
+        query: str,
+        query_embedding: List[float], 
+        division_id: UUID
+    ) -> List[SimilarChunk]:
+        """
+        Retrieve similar chunks using hybrid search (vector + BM25).
+        
+        Args:
+            query: Original query text
+            query_embedding: Query embedding vector
+            division_id: Division to search in
+            
+        Returns:
+            List of similar chunks
+        """
+        try:
+            logger.info(f"Searching for similar chunks in division {division_id} using hybrid search")
+            
+            # Use hybrid retriever for better results
+            similar_chunks = await hybrid_retriever.search(
+                query=query,
+                query_embedding=query_embedding,
+                division_id=division_id,
+                top_k=self.top_k
+            )
+            
+            logger.info(f"Found {len(similar_chunks)} similar chunks using hybrid search")
+            logger.info(f"Similar chunks: {similar_chunks}")
+            return similar_chunks
+            
+        except Exception as e:
+            logger.error(f"Error retrieving similar chunks with hybrid search: {e}")
+            # Fallback to vector-only search
+            return await self._retrieve_similar_chunks_fallback(query_embedding, division_id)
+    
+    async def _retrieve_similar_chunks_fallback(
         self, 
         query_embedding: List[float], 
         division_id: UUID
     ) -> List[SimilarChunk]:
         """
-        Retrieve similar chunks using vector search.
+        Fallback method to retrieve similar chunks using vector search only.
         
         Args:
             query_embedding: Query embedding vector
@@ -198,7 +225,7 @@ class RAGService:
             List of similar chunks
         """
         try:
-            logger.info(f"Searching for similar chunks in division {division_id}")
+            logger.info(f"Fallback: Searching for similar chunks in division {division_id} using vector search")
             
             # Search database for similar embeddings
             results = await db_manager.search_similar_embeddings(
@@ -216,18 +243,19 @@ class RAGService:
                 )
                 similar_chunks.append(chunk)
             
-            logger.info(f"Found {len(similar_chunks)} similar chunks")
+            logger.info(f"Found {len(similar_chunks)} similar chunks using fallback vector search")
             return similar_chunks
             
         except Exception as e:
-            logger.error(f"Error retrieving similar chunks: {e}")
+            logger.error(f"Error retrieving similar chunks with fallback: {e}")
             return []
     
     async def _generate_answer(
         self,
         query: str,
         similar_chunks: List[SimilarChunk],
-        history_messages: List[Dict[str, Any]]
+        history_messages: List[Dict[str, Any]],
+        division_id: UUID
     ) -> Optional[str]:
         """
         Generate answer using LLM based on query and retrieved chunks.
@@ -245,7 +273,7 @@ class RAGService:
                 return None
             
             # Construct prompt
-            prompt = self._construct_prompt(query, similar_chunks, history_messages)
+            prompt = await self._construct_prompt(query, similar_chunks, history_messages, division_id)
             logger.info(f"Constructed prompt with {len(similar_chunks)} chunks")
             
             # Generate answer using OpenAI
@@ -255,8 +283,12 @@ class RAGService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful assistant that answers questions based on the provided context. Answer or state with bahasa Indonesia. "
-                                 "If you cannot find the answer in the context, say so clearly."
+                        "content": """
+                        You are a helpful assistant that answers questions based on the provided context. \
+                        Answer or state with bahasa Indonesia. \ 
+                        If you cannot find the answer in the context, say so clearly. \
+                        If task given is not related to the available documents or context, say 'Maaf, saya tidak dapat menjawab pertanyaan Anda dikarenakan tidak ada informasi yang relevan dalam pemahaman saya.' in the respective language. \
+                        Response with rich Markdown as valid GitHub-flavored Markdown format, do separate each sentence with 2 new line (USE '\\n\\n') instead of one and make sure when implementing bold, italic, underline, etc, use the correct syntax and make sure when implementing table-like structure, use the correct syntax."""
                     },
                     {
                         "role": "user",
@@ -275,11 +307,12 @@ class RAGService:
             logger.error(f"Error generating answer: {e}")
             return None
     
-    def _construct_prompt(
+    async def _construct_prompt(
         self,
         query: str,
         similar_chunks: List[SimilarChunk],
         history_messages: List[Dict[str, Any]],
+        division_id: UUID
     ) -> str:
         """
         Construct prompt for LLM with query and context.
@@ -287,10 +320,15 @@ class RAGService:
         Args:
             query: User query
             similar_chunks: Retrieved chunks to use as context
+            history_messages: Conversation history
+            division_id: Division ID to get available documents
             
         Returns:
             Constructed prompt
         """
+        # Get all available documents in the division
+        available_documents = await db_manager.get_documents_by_division(division_id)
+        
         # Build context from similar chunks
         context_parts = []
         for i, chunk in enumerate(similar_chunks, 1):
@@ -308,11 +346,23 @@ class RAGService:
             history_parts.append(f"{role}: {content}")
         history = "\n".join(history_parts)
 
+        # Build available documents list
+        available_docs_parts = []
+        if available_documents:
+            available_docs_parts.append("Available documents in this division:")
+            for doc in available_documents:
+                available_docs_parts.append(f"- {doc['original_filename']} ({doc['file_type']})")
+        else:
+            available_docs_parts.append("No documents are currently available in this division.")
+        
+        available_docs = "\n".join(available_docs_parts)
+
         # Construct final prompt
         prompt = (
             "You are a helpful assistant. Answer in bahasa Indonesia.\n\n"
             "Conversation history (most recent last):\n"
             f"{history}\n\n"
+            f"Available documents: {available_docs}\n\n"
             "Use the following retrieved document context to answer the new user question.\n"
             "If the answer is not in the context, say you don't have enough information.\n\n"
             f"Context:\n{context}\n\n"

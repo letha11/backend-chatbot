@@ -235,7 +235,7 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
   const { id } = req.params;
   
   const documentRepository = AppDataSource.getRepository(Document);
-  const embeddingRepository = AppDataSource.getRepository(Embedding);
+  // const embeddingRepository = AppDataSource.getRepository(Embedding);
   
   const document = await documentRepository.findOne({ where: { id } });
   
@@ -245,7 +245,7 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
   
   try {
     // Remove associated embeddings from PostgreSQL
-    await embeddingRepository.delete({ document_id: id });
+    // await embeddingRepository.delete({ document_id: id });
     
     // Remove embeddings from ChromaDB vector database
     const vectorDeleteSuccess = await vectorService.deleteDocumentEmbeddings(id);
@@ -257,17 +257,21 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
     
     // Update document status to deleted
     await documentRepository.delete(id);
-    // await documentRepository.update(id, { 
-    //   status: 'deleted', 
-    //   is_active: false 
-    // });
     
     // Optionally delete from storage (uncomment if you want to delete files)
-    // try {
-    //   await storageService.deleteFile(document.storage_path);
-    // } catch (storageError) {
-    //   logger.warn(`Failed to delete file from storage: ${document.storage_path}`, storageError);
-    // }
+    try {
+      await storageService.deleteFile(document.storage_path);
+    } catch (storageError) {
+      logger.warn(`Failed to delete file from storage: ${document.storage_path}`, storageError);
+    }
+
+    // Delete from ChromaDB vector and OpenSearch database
+    // Trigger deletion via FastAPI microservice
+    try {
+      await axios.delete(`${config.fastapi.url}/delete-document/${id}`);
+    } catch (vectorError) {
+      logger.error(`Failed to delete document ${id} from ChromaDB and OpenSearch: ${vectorError}`);
+    }
     
     logger.info(`Document deleted: ${id} by user ${req.user!.username}`);
     
