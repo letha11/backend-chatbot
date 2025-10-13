@@ -256,10 +256,11 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
     }
     
     // Update document status to deleted
-    await documentRepository.update(id, { 
-      status: 'deleted', 
-      is_active: false 
-    });
+    await documentRepository.delete(id);
+    // await documentRepository.update(id, { 
+    //   status: 'deleted', 
+    //   is_active: false 
+    // });
     
     // Optionally delete from storage (uncomment if you want to delete files)
     // try {
