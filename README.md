@@ -392,7 +392,6 @@ This project is licensed under the MIT License.
 
 - **OpenRouter Issues**: Check [OpenRouter documentation](https://openrouter.ai/docs)
 - **General Issues**: Create an issue in the repository
-- **Setup Help**: See [OPENROUTER_SETUP.md](OPENROUTER_SETUP.md)
 
 ---
 
