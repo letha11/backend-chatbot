@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from loguru import logger
 
-from ..services.vector_factory import vector_service_factory
 from ..database import db_manager
+from ..services.opensearch import opensearch_service
 
 router = APIRouter(prefix="/vector", tags=["vector"])
 
@@ -22,39 +22,37 @@ class VectorServiceResponse(BaseModel):
 
 @router.get("/health", response_model=VectorServiceResponse)
 async def get_vector_health() -> VectorServiceResponse:
-    """Get health status of ChromaDB service."""
+    """Get health/status of OpenSearch index."""
     try:
-        # Get ChromaDB health status
-        health = await vector_service_factory.health_check()
-        
-        # Get ChromaDB stats
-        stats = await vector_service_factory.get_stats()
+        # Basic check by fetching stats
+        stats = await db_manager.get_vector_service_stats()
+        health = True if stats else False
         
         return VectorServiceResponse(
             success=health,
-            message="ChromaDB health check completed",
+            message="OpenSearch health check completed",
             data=stats
         )
         
     except Exception as e:
-        logger.error(f"Error getting ChromaDB health: {e}")
+        logger.error(f"Error getting OpenSearch health: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/stats", response_model=VectorServiceResponse)
 async def get_vector_stats() -> VectorServiceResponse:
-    """Get ChromaDB statistics."""
+    """Get OpenSearch index statistics."""
     try:
-        stats = await vector_service_factory.get_stats()
+        stats = await db_manager.get_vector_service_stats()
         
         return VectorServiceResponse(
             success=True,
-            message="ChromaDB statistics retrieved successfully",
+            message="OpenSearch statistics retrieved successfully",
             data=stats
         )
         
     except Exception as e:
-        logger.error(f"Error getting ChromaDB stats: {e}")
+        logger.error(f"Error getting OpenSearch stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -63,31 +61,31 @@ async def get_vector_stats() -> VectorServiceResponse:
 
 @router.post("/cleanup", response_model=VectorServiceResponse)
 async def cleanup_vector_data() -> VectorServiceResponse:
-    """Clean up all vector data from ChromaDB."""
+    """Clean up all vector data from OpenSearch (recreate index)."""
     try:
-        success = await vector_service_factory.cleanup_service()
+        success = await db_manager.cleanup_all_embeddings()
         
         if success:
             return VectorServiceResponse(
                 success=True,
-                message="Successfully cleaned up ChromaDB vector data"
+                message="Successfully cleaned up OpenSearch vector data"
             )
         else:
             raise HTTPException(
                 status_code=500,
-                detail="Failed to cleanup ChromaDB data"
+                detail="Failed to cleanup OpenSearch data"
             )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cleaning up ChromaDB data: {e}")
+        logger.error(f"Error cleaning up OpenSearch data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/document/{document_id}", response_model=VectorServiceResponse)
 async def delete_document_vectors(document_id: str) -> VectorServiceResponse:
-    """Delete all vectors for a specific document."""
+    """Delete all vectors for a specific document from OpenSearch."""
     try:
         from uuid import UUID
         doc_uuid = UUID(document_id)
@@ -97,7 +95,7 @@ async def delete_document_vectors(document_id: str) -> VectorServiceResponse:
         if success:
             return VectorServiceResponse(
                 success=True,
-                message=f"Successfully deleted vectors for document {document_id}"
+                message=f"Successfully deleted vectors for document {document_id} from OpenSearch"
             )
         else:
             raise HTTPException(
@@ -116,7 +114,7 @@ async def delete_document_vectors(document_id: str) -> VectorServiceResponse:
 
 @router.delete("/division/{division_id}", response_model=VectorServiceResponse)
 async def delete_division_vectors(division_id: str) -> VectorServiceResponse:
-    """Delete all vectors for a specific division."""
+    """Delete all vectors for a specific division from OpenSearch."""
     try:
         from uuid import UUID
         div_uuid = UUID(division_id)
@@ -126,7 +124,7 @@ async def delete_division_vectors(division_id: str) -> VectorServiceResponse:
         if success:
             return VectorServiceResponse(
                 success=True,
-                message=f"Successfully deleted vectors for division {division_id}"
+                message=f"Successfully deleted vectors for division {division_id} from OpenSearch"
             )
         else:
             raise HTTPException(
@@ -148,7 +146,7 @@ async def update_document_active_status(
     document_id: str,
     is_active: bool = Query(..., description="Set document active status")
 ) -> VectorServiceResponse:
-    """Update the active status of a document in ChromaDB."""
+    """Update the active status of a document in OpenSearch."""
     try:
         from uuid import UUID
         document_uuid = UUID(document_id)
@@ -159,7 +157,7 @@ async def update_document_active_status(
             status_text = "activated" if is_active else "deactivated"
             return VectorServiceResponse(
                 success=True,
-                message=f"Successfully {status_text} document {document_id} in ChromaDB",
+                message=f"Successfully {status_text} document {document_id} in OpenSearch",
                 data={"document_id": document_id, "is_active": is_active}
             )
         else:

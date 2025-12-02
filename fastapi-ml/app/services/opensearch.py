@@ -24,13 +24,15 @@ class OpenSearchService:
 
         is_index_exists = self.client.indices.exists(index=self.index_name)
         if not is_index_exists:
+            # Create index with both BM25 (text) and kNN vector support
             self.client.indices.create(
                 index=self.index_name,
                 body={
-                    'settings': {
-                        'index': {
-                            'number_of_shards': 1,
-                            'number_of_replicas': 0
+                    "settings": {
+                        "index": {
+                            "number_of_shards": 1,
+                            "number_of_replicas": 0,
+                            "knn": True
                         }
                     },
                     "mappings": {
@@ -52,6 +54,15 @@ class OpenSearchService:
                             },
                             "is_active": {
                                 "type": "boolean"
+                            },
+                            "embedding": {
+                                "type": "knn_vector",
+                                "dimension": settings.embedding_dimension,
+                                # "method": {
+                                #     "name": "hnsw",
+                                #     "space_type": "cosinesimil",
+                                #     "engine": "nmslib"
+                                # }
                             }
                         }
                     }
@@ -72,7 +83,7 @@ class OpenSearchService:
             response = self.client.search(
                 index=self.index_name,
                 body={
-                    "from" : 0, "size" : top_k,
+                    "from": 0, "size": top_k,
                     "query": {
                         "bool": {
                             "must": [
@@ -80,7 +91,7 @@ class OpenSearchService:
                             ],
                             "filter": [
                                 { "term": { "is_active": True } },
-                                { "term": { "division_id": division_id } }
+                                { "term": { "division_id": str(division_id) } }
                             ]
                         }
                     }
@@ -94,6 +105,57 @@ class OpenSearchService:
             return results
         except Exception as e:
             logger.error(f"Error searching for similar documents in OpenSearch: {e}")
+            return []
+
+    async def search_similar_vector(
+        self,
+        query_embedding: List[float],
+        division_id: uuid.UUID,
+        top_k: int = 5,
+    ) -> List[OpenSearchResult]:
+        """
+        Vector kNN search in OpenSearch filtered by division and active docs.
+        """
+        try:
+            body: Dict[str, Any] = {
+                "size": top_k,
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"is_active": True}},
+                            {"term": {"division_id": str(division_id)}}
+                        ],
+                        "must": {
+                            "knn": {
+                                "embedding": {"vector": query_embedding, "k": top_k}
+                            }
+                        }
+                    }
+                }
+            }
+
+            response = self.client.search(index=self.index_name, body=body)
+
+            results: List[OpenSearchResult] = []
+            for hit in response.get("hits", {}).get("hits", []):
+                src = hit.get("_source", {})
+                try:
+                    results.append(
+                        OpenSearchResult(
+                            score=float(hit.get("_score", 0.0)),
+                            chunk_text=src.get("chunk_text", ""),
+                            chunk_index=int(src.get("chunk_index", 0)),
+                            filename=src.get("filename", "unknown"),
+                            is_active=bool(src.get("is_active", False)),
+                            document_id=uuid.UUID(str(src.get("document_id"))),
+                            division_id=uuid.UUID(str(src.get("division_id"))),
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Skipping malformed OpenSearch hit: {e}")
+            return results
+        except Exception as e:
+            logger.error(f"Error performing vector search in OpenSearch: {e}")
             return []
 
     async def update_document_active_status(self, document_id: uuid.UUID, is_active: bool) -> bool:
@@ -131,9 +193,9 @@ class OpenSearchService:
         Store documents in OpenSearch.
         """
         try:
-            data:List[Dict[str, Any]] = []
+            data: List[Dict[str, Any]] = []
             for embedding_data in embeddings_data:
-                body = {
+                body: Dict[str, Any] = {
                     "chunk_text": embedding_data.chunk_text,
                     "chunk_index": embedding_data.chunk_index,
                     "document_id": embedding_data.document_id,
@@ -146,6 +208,9 @@ class OpenSearchService:
                     body["filename"] = embedding_data.filename
                 if embedding_data.is_active is not None:
                     body["is_active"] = embedding_data.is_active
+                # include vector embedding for kNN
+                if embedding_data.embedding is not None:
+                    body["embedding"] = embedding_data.embedding
 
                 logger.info(f"Storing document: {body}")
 

@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
+
+    # Hybrid Retriever Configuration
+    result_threshold: float = 0.5
     
     class Config:
         env_file = ".env"

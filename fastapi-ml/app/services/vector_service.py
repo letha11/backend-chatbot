@@ -1,6 +1,5 @@
 """
-Vector database service abstraction layer.
-Provides a unified interface for different vector database implementations.
+Vector database service abstraction (deprecated). Using OpenSearch directly.
 """
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union
@@ -34,7 +33,7 @@ class VectorServiceConfig:
 
 
 class VectorService(ABC):
-    """Abstract base class for vector database services."""
+    """Deprecated base class (kept for compatibility)."""
     
     def __init__(self, config: VectorServiceConfig):
         self.config = config
@@ -153,4 +152,4 @@ class VectorService(ABC):
         self.is_initialized = False
 
 
-# PostgreSQL vector service removed - using ChromaDB exclusively
+# PostgreSQL and Chroma services removed - using OpenSearch exclusively

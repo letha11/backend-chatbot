@@ -218,7 +218,8 @@ Create a new division.
 ### GET /api/v1/divisions
 Get all divisions.
 
-**Query Parameters:** None  
+**Query Parameters:**
+- `is_active`: boolean (optional) - Filter by active status
 
 **Example Success Response:**
 ```json
@@ -279,6 +280,28 @@ Get a specific division by UUID.
 }
 ```
 
+### GET /api/v1/divisions/default
+Get the default division (only available when division feature is disabled).
+
+**Note:** This endpoint is only available when `config.features.division` is `false`. When division feature is enabled, use `/api/v1/divisions/:id` instead.
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Default division retrieved successfully",
+  "data": {
+    "id": "456e7890-e12b-34c5-d678-901234567890",
+    "name": "Default",
+    "description": "Default division",
+    "is_active": true,
+    "created_at": "2024-01-01T12:00:00.000Z",
+    "updated_at": "2024-01-01T12:00:00.000Z"
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
 ### PUT /api/v1/divisions/:id
 Update an existing division.
 
@@ -335,6 +358,8 @@ Soft delete a division (sets is_active to false).
 }
 ```
 
+**Note:** The response does not include a `data` field for delete operations.
+
 ---
 
 ## Document Management
@@ -351,7 +376,7 @@ Upload a new document file.
 
 **Form Data:**
 - `file`: File to upload (required)
-- `division_id`: UUID of the target division (required)
+- `division_id`: UUID of the target division (required when division feature is enabled, ignored when disabled)
 
 **Example Success Response:**
 ```json
@@ -365,14 +390,17 @@ Upload a new document file.
     "storage_path": "abc12345-def6-7890-ghij-klmnopqrstuv.pdf",
     "file_type": "pdf",
     "status": "uploaded",
-    "is_active": false,
-    "uploaded_by": "123e4567-e89b-12d3-a456-426614174000",
-    "created_at": "2024-01-01T12:00:00.000Z",
-    "updated_at": "2024-01-01T12:00:00.000Z"
+    "is_active": true,
+    "created_at": "2024-01-01T12:00:00.000Z"
   },
   "timestamp": "2024-01-01T12:00:00.000Z"
 }
 ```
+
+**Note:** 
+- The document is created with `is_active: true` initially
+- Document parsing is triggered asynchronously via FastAPI microservice
+- SSE events are sent to notify frontend about parsing status
 
 **Example Error Response:**
 ```json
@@ -387,8 +415,10 @@ Upload a new document file.
 Get all documents with optional filtering.
 
 **Query Parameters:**
-- `division_id`: UUID (optional) - Filter by division
+- `division_id`: UUID (optional) - Filter by division (only used when division feature is enabled)
 - `is_active`: boolean (optional) - Filter by active status
+
+**Note:** When division feature is disabled (`config.features.division = false`), documents are automatically filtered by the default division.
 
 **Example Success Response:**
 ```json
@@ -506,6 +536,8 @@ Toggle the active status of a document.
 }
 ```
 
+**Note:** If vector database sync fails, the message will include a warning: "(Note: Vector database sync failed, but document status updated in main database)"
+
 **Example Error Response:**
 ```json
 {
@@ -532,6 +564,11 @@ Delete a document (removes from storage and database).
 }
 ```
 
+**Note:** 
+- The response does not include a `data` field for delete operations
+- If vector database cleanup fails, the message will include a warning: "(Note: Vector database cleanup failed, but document deleted from main database)"
+- The document is also deleted from ChromaDB and OpenSearch via FastAPI microservice
+
 ---
 
 ## Chat Endpoint
@@ -545,12 +582,14 @@ Process a chat query using RAG pipeline (proxies to FastAPI ML service).
 **Request Body:**
 ```json
 {
-  "division_id": "UUID (required)",
+  "division_id": "UUID (required when division feature is enabled)",
   "query": "string (1-2000 chars, required)",
   "conversation_id": "UUID (optional)",
   "title": "string (optional)"
 }
 ```
+
+**Note:** When division feature is disabled (`config.features.division = false`), `division_id` is automatically set to the default division.
 
 **Example Request:**
 ```json
@@ -626,11 +665,14 @@ Ingest conversation messages (internal API only).
   "messages": [
     {
       "role": "user | assistant | system",
-      "content": "string"
+      "content": "string",
+      "sources": "string (optional)"
     }
   ]
 }
 ```
+
+**Note:** When division feature is disabled (`config.features.division = false`), `division_id` is automatically set to the default division.
 
 **Example Success Response:**
 ```json
@@ -647,7 +689,7 @@ Ingest conversation messages (internal API only).
 ```
 
 ### GET /api/v1/conversations/:conversation_id/history
-Get conversation history for a specific conversation.
+Get conversation history for a specific conversation (public API with JWT authentication).
 
 **Authentication:** Bearer token required  
 **Path Parameters:**
@@ -660,7 +702,6 @@ Get conversation history for a specific conversation.
 ```json
 {
   "status": "success",
-  "message": "Conversation history retrieved successfully",
   "data": {
     "conversation": {
       "id": "789e0123-e45f-67g8-h901-234567890123",
@@ -674,12 +715,14 @@ Get conversation history for a specific conversation.
         "id": "msg-001",
         "role": "user",
         "content": "What are the safety protocols?",
+        "sources": null,
         "created_at": "2024-01-01T10:05:00.000Z"
       },
       {
         "id": "msg-002",
         "role": "assistant",
         "content": "Based on the technical manual...",
+        "sources": "[{\"filename\":\"manual.pdf\",\"chunk_index\":5}]",
         "created_at": "2024-01-01T10:05:30.000Z"
       }
     ]
@@ -688,12 +731,68 @@ Get conversation history for a specific conversation.
 }
 ```
 
+**Example Error Response:**
+```json
+{
+  "status": "error",
+  "error": "You are not allowed to access this conversation",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+**Note:** Users can only access conversations that belong to them (`user_id` must match the authenticated user).
+
+### GET /api/v1/conversations/:conversation_id/history-internal
+Get conversation history for a specific conversation (internal API only).
+
+**Authentication:** Internal API key required (`x-internal-api-key` header)  
+**Path Parameters:**
+- `conversation_id`: UUID of the conversation
+
+**Query Parameters:**
+- `limit`: integer (optional, max 20, default 6)
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "conversation": {
+      "id": "789e0123-e45f-67g8-h901-234567890123",
+      "title": "Safety Protocols Discussion",
+      "division_id": "456e7890-e12b-34c5-d678-901234567890",
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "created_at": "2024-01-01T10:00:00.000Z"
+    },
+    "messages": [
+      {
+        "id": "msg-001",
+        "role": "user",
+        "content": "What are the safety protocols?",
+        "sources": null,
+        "created_at": "2024-01-01T10:05:00.000Z"
+      },
+      {
+        "id": "msg-002",
+        "role": "assistant",
+        "content": "Based on the technical manual...",
+        "sources": "[{\"filename\":\"manual.pdf\",\"chunk_index\":5}]",
+        "created_at": "2024-01-01T10:05:30.000Z"
+      }
+    ]
+  },
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+**Note:** This endpoint does not check user ownership and is intended for internal use by the FastAPI ML service.
+
 ### GET /api/v1/conversations
 List conversations for the current user.
 
 **Authentication:** Bearer token required  
 **Query Parameters:**
-- `division_id`: UUID (optional) - Filter by division
+- `division_id`: UUID (optional) - Filter by division (only used when division feature is enabled)
 - `limit`: integer (optional, max 200, default 50)
 
 **Example Success Response:**
@@ -717,6 +816,10 @@ List conversations for the current user.
 }
 ```
 
+**Note:** 
+- Conversations are ordered by `updated_at` in descending order (most recent first)
+- When division feature is disabled, conversations are automatically filtered by the default division
+
 ---
 
 ## User Management
@@ -731,7 +834,6 @@ List all users.
 ```json
 {
   "status": "success",
-  "message": "Users retrieved successfully",
   "data": [
     {
       "id": "123e4567-e89b-12d3-a456-426614174000",
@@ -757,7 +859,6 @@ Get a specific user by UUID.
 ```json
 {
   "status": "success",
-  "message": "User retrieved successfully",
   "data": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
     "name": "Admin User",
@@ -856,6 +957,110 @@ Delete a user.
   "timestamp": "2024-01-01T12:00:00.000Z"
 }
 ```
+
+**Note:** The response does not include a `data` field for delete operations.
+
+---
+
+## Event Endpoints
+
+Base path: `/api/v1/events`  
+**Authentication:** None required (SSE endpoint) / Internal API key for webhook
+
+### GET /api/v1/events
+Establish Server-Sent Events (SSE) connection for real-time document processing updates.
+
+**Authentication:** None required  
+**Content-Type:** `text/event-stream`
+
+**Description:** This endpoint establishes a persistent SSE connection that allows the frontend to receive real-time updates about document processing status. The connection remains open and sends heartbeat events every 30 seconds to keep the connection alive.
+
+**Event Types:**
+- `heartbeat`: Periodic keep-alive event sent every 30 seconds
+- `document_processing`: Document processing status updates
+
+**Example Heartbeat Event:**
+```
+event: heartbeat
+data: {"timestamp":"2024-01-01T12:00:00.000Z"}
+```
+
+**Example Document Processing Event:**
+```
+event: document_processing
+data: {
+  "documentId": "abc12345-def6-7890-ghij-klmnopqrstuv",
+  "status": "parsing_started",
+  "message": "Document parsing has started",
+  "metadata": {
+    "filename": "technical_manual.pdf",
+    "fileType": "pdf",
+    "divisionId": "456e7890-e12b-34c5-d678-901234567890"
+  }
+}
+```
+
+**Status Values:**
+- `parsing_started`: Document parsing has begun
+- `parsing_failed`: Document parsing failed
+- `embedding_started`: Embedding generation has started
+- `embedding_completed`: Embedding generation completed
+- `embedded`: Document fully processed and embedded
+
+**Note:** The connection will automatically close if the client disconnects. The server handles cleanup automatically.
+
+### POST /api/v1/events/webhook/document-processing
+Receive document processing webhook from FastAPI ML service (internal API only).
+
+**Authentication:** Internal API key required (`x-webhook-key` header)  
+**Request Body:**
+```json
+{
+  "documentId": "UUID (required)",
+  "status": "string (required)",
+  "message": "string (required)",
+  "metadata": {
+    "filename": "string (optional)",
+    "fileType": "string (optional)",
+    "divisionId": "UUID (optional)",
+    "error": "string (optional)"
+  }
+}
+```
+
+**Example Request:**
+```json
+{
+  "documentId": "abc12345-def6-7890-ghij-klmnopqrstuv",
+  "status": "embedded",
+  "message": "Document successfully embedded",
+  "metadata": {
+    "filename": "technical_manual.pdf",
+    "fileType": "pdf",
+    "divisionId": "456e7890-e12b-34c5-d678-901234567890"
+  }
+}
+```
+
+**Example Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Webhook processed successfully",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+**Example Error Response:**
+```json
+{
+  "status": "error",
+  "error": "Missing required fields: documentId, status",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+**Note:** This endpoint forwards the webhook event to all connected SSE clients via the SSE service.
 
 ---
 

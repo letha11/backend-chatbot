@@ -284,11 +284,26 @@ class RAGService:
                     {
                         "role": "system",
                         "content": """
-                        You are a helpful assistant that answers questions based on the provided context. \
-                        Answer or state with bahasa Indonesia. \ 
-                        If you cannot find the answer in the context, say so clearly. \
-                        If task given is not related to the available documents or context, say 'Maaf, saya tidak dapat menjawab pertanyaan Anda dikarenakan tidak ada informasi yang relevan dalam pemahaman saya.' in the respective language. \
-                        Response with rich Markdown as valid GitHub-flavored Markdown format, do separate each sentence with 2 new line (USE '\\n\\n') instead of one and make sure when implementing bold, italic, underline, etc, use the correct syntax and make sure when implementing table-like structure, use the correct syntax."""
+                        **Generate Response to User Query**
+                        **Step 1: Parse Context Information**
+                        Extract and utilize relevant knowledge from the provided context within `<context></context>` XML tags.
+                        **Step 2: Analyze User Query**
+                        Carefully read and comprehend the user's query, pinpointing the key concepts, entities, and intent behind the question.
+                        **Step 3: Determine Response**
+                        If the answer to the user's query can be directly inferred from the context information, provide a concise and accurate response in the same language as the user's query.
+                        **Step 4: Handle Uncertainty**
+                        If the answer is not clear, ask the user for clarification to ensure an accurate response.
+                        **Step 5: Handle Available Documents**
+                        If the user's query is related to the available documents, use the available documents to answer the question.
+                        If the user's query is not related to the available documents, say you don't have enough information or you don't know the answer.
+                        **Step 6: Avoid Context Attribution**
+                        When formulating your response, do not indicate that the information was derived from the context.
+                        **Step 7: Respond in User's Language**
+                        Maintain consistency by ensuring the response is in the same language as the user's query.
+                        **Step 8: Provide Response**
+                        Generate a clear, concise, and informative response to the user's query, adhering to the guidelines outlined above.
+                       
+                        """
                     },
                     {
                         "role": "user",
@@ -358,17 +373,49 @@ class RAGService:
         available_docs = "\n".join(available_docs_parts)
 
         # Construct final prompt
-        prompt = (
-            "You are a helpful assistant. Answer in bahasa Indonesia.\n\n"
-            "Conversation history (most recent last):\n"
-            f"{history}\n\n"
-            f"Available documents: {available_docs}\n\n"
-            "Use the following retrieved document context to answer the new user question.\n"
-            "If the answer is not in the context, say you don't have enough information.\n\n"
-            f"Context:\n{context}\n\n"
-            f"New Question: {query}\n\n"
-            "Answer:"
-        )
+        prompt = f"""
+        **Generate Response to User Query**
+        **Step 1: Parse Context Information**
+        Extract and utilize relevant knowledge from the provided context within `<context></context>` XML tags.
+        **Step 2: Analyze User Query**
+        Carefully read and comprehend the user's query, pinpointing the key concepts, entities, and intent behind the question.
+        **Step 3: Determine Response**
+        If the answer to the user's query can be directly inferred from the context information, provide a concise and accurate response in the same language as the user's query.
+        **Step 4: Handle Uncertainty**
+        If the answer is not clear, ask the user for clarification to ensure an accurate response.
+        **Step 5: Handle Available Documents**
+        If the user's query is related to the available documents, use the available documents to answer the question.
+        If the user's query is not related to the available documents, say you don't have enough information or you don't know the answer.
+        **Step 6: Avoid Context Attribution**
+        When formulating your response, do not indicate that the information was derived from the context.
+        **Step 7: Respond in User's Language**
+        Maintain consistency by ensuring the response is in the same language as the user's query.
+        **Step 8: Provide Response**
+        Generate a clear, concise, and informative response to the user's query, adhering to the guidelines outlined above.
+        <history>
+        {history}
+        </history>
+        <available_documents>
+        {available_docs}
+        </available_documents>
+        <context>
+        {context}
+        </context>
+        User Query: {query}
+        Answer:
+        """
+        # prompt = (
+
+        #     "You are a helpful assistant. Answer in bahasa Indonesia.\n\n"
+        #     "Conversation history (most recent last):\n"
+        #     f"{history}\n\n"
+        #     f"Available documents: {available_docs}\n\n"
+        #     "Use the following retrieved document context to answer the new user question.\n"
+        #     "If the answer is not in the context, say you don't have enough information.\n\n"
+        #     f"Context:\n{context}\n\n"
+        #     f"New Question: {query}\n\n"
+        #     "Answer:"
+        # )
         
         return prompt
 

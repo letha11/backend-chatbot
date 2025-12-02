@@ -625,10 +625,12 @@ The Postman collection now fully supports the new standardized API response form
 
 ### ✅ Feature 4.4: Chat Retrieval Endpoint (RAG Pipeline)
 
-- **Status**: Completed
+- **Status**: Completed (Refactored to OpenSearch-only)
 - **Implementation**:
   - Complete RAG pipeline with query embedding, vector search, and LLM generation
-  - pgvector cosine similarity search for finding relevant document chunks
+  - Hybrid retrieval now uses OpenSearch for both BM25 and kNN vector search
+  - Added OpenSearch index mapping with `knn_vector` field and cosine similarity
+  - Detailed logging of BM25 score, vector score, and combined hybrid score per chunk
   - Intelligent prompt construction with context from retrieved chunks
   - OpenAI GPT integration for answer generation
   - Source citation and relevance scoring

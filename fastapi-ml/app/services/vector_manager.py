@@ -1,6 +1,5 @@
 """
-ChromaDB vector database management service.
-Handles all vector operations using ChromaDB exclusively.
+Vector database management facade now using OpenSearch for storage and retrieval.
 """
 from typing import List, Dict, Any
 from uuid import UUID
@@ -12,18 +11,14 @@ from ..models import EmbeddingData
 
 
 class VectorManager:
-    """Manages ChromaDB vector database operations."""
+    """Manages vector operations backed by OpenSearch."""
     
     @staticmethod
     async def store_embeddings(embeddings_data: List[Dict[str, Any]]) -> bool:
-        """Store multiple embeddings in ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Store multiple embeddings in OpenSearch with metadata enrichment from DB."""
         from ..database import AsyncSessionLocal, text
         
         try:
-            # Get the ChromaDB service
-            vector_service = await vector_service_factory.get_vector_service()
-            
             # Convert dict data to EmbeddingData objects with metadata
             embedding_objects = []
             
@@ -66,18 +61,18 @@ class VectorManager:
                         )
                         embedding_objects.append(embedding_obj)
             
-            # Store in ChromaDB
-            success = await vector_service.store_embeddings(embedding_objects)
+            # Store in OpenSearch
+            success = await opensearch_service.store_document(embedding_objects)
             
             if success:
-                logger.info(f"Successfully stored {len(embedding_objects)} embeddings in ChromaDB")
+                logger.info(f"Successfully stored {len(embedding_objects)} embeddings in OpenSearch")
             else:
-                logger.error("Failed to store embeddings in ChromaDB")
+                logger.error("Failed to store embeddings in OpenSearch")
             
             return success
             
         except Exception as e:
-            logger.error(f"Error storing embeddings in ChromaDB: {e}")
+            logger.error(f"Error storing embeddings in OpenSearch: {e}")
             return False
     
     @staticmethod
@@ -86,128 +81,120 @@ class VectorManager:
         division_id: UUID, 
         limit: int = 5
     ) -> List[Dict[str, Any]]:
-        """Search for similar embeddings in ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Search for similar embeddings in OpenSearch (kNN)."""
         
         try:
-            # Get the ChromaDB service
-            vector_service = await vector_service_factory.get_vector_service()
-            
-            # Search using ChromaDB
-            similar_chunks = await vector_service.search_similar(
-                query_embedding, division_id, limit
+            # Search using OpenSearch kNN
+            os_results = await opensearch_service.search_similar_vector(
+                query_embedding=query_embedding, division_id=division_id, top_k=limit
             )
             
             # Convert SimilarChunk objects to dict format for backward compatibility
             results = []
-            for chunk in similar_chunks:
-                if (chunk.distance > 1.2):
+            for hit in os_results:
+                distance = 1.0 / (1.0 + float(hit.score))
+                if distance > 1.2:
                     continue
-
                 results.append({
-                    "chunk_text": chunk.chunk_text,
-                    "chunk_index": chunk.chunk_index,
-                    "filename": chunk.filename,
-                    "distance": chunk.distance
+                    "chunk_text": hit.chunk_text,
+                    "chunk_index": hit.chunk_index,
+                    "filename": hit.filename,
+                    "distance": distance
                 })
             
-            logger.info(f"Found {len(results)} similar chunks in ChromaDB for division {division_id}")
+            logger.info(f"Found {len(results)} similar chunks in OpenSearch for division {division_id}")
             logger.info(f"Results: {results}")
             return results
             
         except Exception as e:
-            logger.error(f"Error searching similar embeddings in ChromaDB: {e}")
+            logger.error(f"Error searching similar embeddings in OpenSearch: {e}")
             return []
     
     @staticmethod
     async def delete_document_embeddings(document_id: UUID) -> bool:
-        """Delete all embeddings for a specific document from ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Delete all embeddings for a specific document from OpenSearch."""
         
         try:
-            vector_service = await vector_service_factory.get_vector_service()
-            
-            # Delete from ChromaDB
-            success = await vector_service.delete_embeddings(document_id)
+            success = await opensearch_service.delete_document(document_id)
             
             if success:
-                logger.info(f"Successfully deleted embeddings for document {document_id} from ChromaDB")
+                logger.info(f"Successfully deleted embeddings for document {document_id} from OpenSearch")
             else:
-                logger.error(f"Failed to delete embeddings for document {document_id}")
+                logger.error(f"Failed to delete embeddings for document {document_id} in OpenSearch")
             
             return success
             
         except Exception as e:
-            logger.error(f"Error deleting document embeddings from ChromaDB: {e}")
+            logger.error(f"Error deleting document embeddings from OpenSearch: {e}")
             return False
     
     @staticmethod
     async def delete_division_embeddings(division_id: UUID) -> bool:
-        """Delete all embeddings for a specific division from ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Delete all embeddings for a specific division from OpenSearch."""
         
         try:
-            vector_service = await vector_service_factory.get_vector_service()
-            
-            # Delete from ChromaDB
-            success = await vector_service.delete_division_embeddings(division_id)
+            response = opensearch_service.client.delete_by_query(
+                index=opensearch_service.index_name,
+                body={"query": {"term": {"division_id": str(division_id)}}}
+            )
+            success = True
             
             if success:
-                logger.info(f"Successfully deleted embeddings for division {division_id} from ChromaDB")
+                logger.info(f"Successfully deleted embeddings for division {division_id} from OpenSearch")
             else:
-                logger.error(f"Failed to delete embeddings for division {division_id}")
+                logger.error(f"Failed to delete embeddings for division {division_id} in OpenSearch")
             
             return success
             
         except Exception as e:
-            logger.error(f"Error deleting division embeddings from ChromaDB: {e}")
+            logger.error(f"Error deleting division embeddings from OpenSearch: {e}")
             return False
     
     @staticmethod
     async def cleanup_all_embeddings() -> bool:
-        """Delete all embeddings from ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Delete all embeddings from OpenSearch (recreate index)."""
         
         try:
-            vector_service = await vector_service_factory.get_vector_service()
-            
-            # Cleanup ChromaDB
-            success = await vector_service.cleanup_all()
+            client = opensearch_service.client
+            index = opensearch_service.index_name
+            if client.indices.exists(index=index):
+                client.indices.delete(index=index, ignore=[400, 404])
+            # Recreate index via re-init
+            opensearch_service.__init__()
+            success = True
             
             if success:
-                logger.info("Successfully cleaned up all embeddings from ChromaDB")
+                logger.info("Successfully cleaned up all embeddings from OpenSearch")
             else:
-                logger.error("Failed to cleanup embeddings from ChromaDB")
+                logger.error("Failed to cleanup embeddings from OpenSearch")
             
             return success
             
         except Exception as e:
-            logger.error(f"Error cleaning up embeddings from ChromaDB: {e}")
+            logger.error(f"Error cleaning up embeddings from OpenSearch: {e}")
             return False
     
     @staticmethod
     async def get_vector_service_stats() -> Dict[str, Any]:
-        """Get statistics from ChromaDB service."""
-        from .vector_factory import vector_service_factory
+        """Get statistics from OpenSearch index."""
         
         try:
-            vector_service = await vector_service_factory.get_vector_service()
-            stats = await vector_service.get_stats()
-            logger.info(f"ChromaDB stats: {stats}")
-            return stats
+            client = opensearch_service.client
+            stats = client.indices.stats(index=opensearch_service.index_name)
+            count = client.count(index=opensearch_service.index_name).get("count", 0)
+            data = {"service": "OpenSearch", "index": opensearch_service.index_name, "doc_count": count, "stats": stats}
+            logger.info(f"OpenSearch stats: {data}")
+            return data
         except Exception as e:
-            logger.error(f"Error getting ChromaDB stats: {e}")
+            logger.error(f"Error getting OpenSearch stats: {e}")
             return {"error": str(e)}
     
     @staticmethod
     async def update_document_active_status(document_id: UUID, is_active: bool) -> bool:
-        """Update the is_active status for all embeddings of a document in ChromaDB."""
-        from .vector_factory import vector_service_factory
+        """Update the is_active status for all embeddings of a document in OpenSearch."""
         from ..database import AsyncSessionLocal, text
         
         try:
-            vector_service = await vector_service_factory.get_vector_service()
-            
             # Get current document metadata
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
@@ -226,35 +213,6 @@ class VectorManager:
                 
                 division_id, filename, status = row
             
-            # Get all embeddings for this document from ChromaDB
-            collection = vector_service.collection
-            if not collection:
-                logger.error("ChromaDB collection not initialized")
-                return False
-            
-            # Query for all embeddings of this document
-            results = collection.get(
-                where={"document_id": str(document_id)},
-                include=["metadatas", "documents", "embeddings"]
-            )
-            
-            if not results['ids']:
-                logger.info(f"No embeddings found for document {document_id}")
-                return True
-            
-            # Update metadata for all chunks of this document
-            updated_metadatas = []
-            for metadata in results['metadatas']:
-                metadata['is_active'] = is_active
-                metadata['document_status'] = status
-                updated_metadatas.append(metadata)
-            
-            # Update the embeddings with new metadata
-            collection.update(
-                ids=results['ids'],
-                metadatas=updated_metadatas
-            )
-
             # Update the document active status in OpenSearch
             response = await opensearch_service.update_document_active_status(document_id, is_active)
             if not response:
@@ -265,7 +223,7 @@ class VectorManager:
             return True
             
         except Exception as e:
-            logger.error(f"Error updating document active status in ChromaDB: {e}")
+            logger.error(f"Error updating document active status in OpenSearch: {e}")
             return False
 
 

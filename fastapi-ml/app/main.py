@@ -19,7 +19,7 @@ from .services.storage import storage_service
 from .services.parser import document_parser
 from .services.embedder import embedding_service
 from .services.retriever import rag_service
-from .services.vector_factory import vector_service_factory
+# Chroma vector service removed; using OpenSearch directly
 from .services.webhook_service import webhook_service
 from .services.opensearch import opensearch_service
 from .routes import vector_routes
@@ -45,9 +45,7 @@ async def lifespan(app: FastAPI):
         # Test embedding service
         logger.info(f"Embedding service info: {embedding_service.get_model_info()}")
         
-        # Initialize vector service
-        vector_service = await vector_service_factory.get_vector_service()
-        logger.info(f"Vector service initialized: {vector_service.service_name}")
+        # Vector service initialization removed (using OpenSearch directly)
         
         # Test storage service
         logger.info("Testing storage service connection...")
@@ -63,13 +61,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down FastAPI ML Microservice...")
     
-    # Close vector service
-    try:
-        vector_service = await vector_service_factory.get_vector_service()
-        await vector_service.close()
-        logger.info("Vector service closed")
-    except Exception as e:
-        logger.warning(f"Error closing vector service: {e}")
+    # No vector service to close (OpenSearch client persists)
 
 
 # Create FastAPI app

@@ -6,12 +6,15 @@ from typing import List, Dict, Any, Optional, Tuple
 from uuid import UUID
 from loguru import logger
 import numpy as np
+from pydantic import config
 
 from app.services.opensearch import opensearch_service
 
 from ..models import OpenSearchResult, SimilarChunk
 # from .bm25_retriever import bm25_retriever
 from ..database import db_manager
+
+from ..config import settings
 
 
 class HybridRetriever:
@@ -103,22 +106,28 @@ class HybridRetriever:
     ) -> List[SimilarChunk]:
         """Perform vector search."""
         try:
-            # Use the existing vector search from database manager
-            results = await db_manager.search_similar_embeddings(
-                query_embedding, division_id, top_k
+            # Perform vector kNN search via OpenSearch
+            os_results = await opensearch_service.search_similar_vector(
+                query_embedding=query_embedding,
+                division_id=division_id,
+                top_k=top_k
             )
-            
-            # Convert to SimilarChunk objects
-            vector_chunks = []
-            for result in results:
-                chunk = SimilarChunk(
-                    chunk_text=result["chunk_text"],
-                    chunk_index=result["chunk_index"],
-                    filename=result["filename"],
-                    distance=result["distance"]
+
+            # Convert OpenSearch results to SimilarChunk using score -> distance (cosine)
+            vector_chunks: List[SimilarChunk] = []
+            for res in os_results:
+                # Convert similarity score (higher is better) to distance-like value
+                # Use 1/(1+score) to keep previous contract where lower is better
+                distance = 1.0 / (1.0 + float(res.score))
+                vector_chunks.append(
+                    SimilarChunk(
+                        chunk_text=res.chunk_text,
+                        chunk_index=res.chunk_index,
+                        filename=res.filename,
+                        distance=distance,
+                    )
                 )
-                vector_chunks.append(chunk)
-            
+
             return vector_chunks
             
         except Exception as e:
@@ -178,7 +187,7 @@ class HybridRetriever:
                 chunk_id = self._get_opensearch_chunk_id(result)
                 # OpenSearch score is higher for better matches, use it directly as similarity score
                 bm25_score = result.score
-                
+
                 if chunk_id in chunk_map:
                     # Update existing entry
                     chunk_map[chunk_id]['bm25_score'] = bm25_score
@@ -201,8 +210,6 @@ class HybridRetriever:
                         'bm25_rank': i + 1
                     }
 
-            logger.info(f"Chunk map: {chunk_map}")
-            
             # Calculate hybrid scores
             hybrid_results = []
             for chunk_id, data in chunk_map.items():
@@ -213,13 +220,16 @@ class HybridRetriever:
                 bm25_norm_score = self._normalize_rank_score(
                     data['bm25_rank'], len(bm25_results)
                 )
-                
+
                 # Calculate hybrid score
                 hybrid_score = (
                     self.vector_weight * vector_norm_score +
                     self.bm25_weight * bm25_norm_score
                 )
-                
+
+                if hybrid_score < settings.result_threshold:
+                    logger.info(f"Skipping chunk {chunk_id} with hybrid score {hybrid_score}")
+                    continue
                 
                 # Create new chunk with hybrid distance
                 hybrid_chunk = SimilarChunk(
@@ -229,11 +239,22 @@ class HybridRetriever:
                     distance=1.0 / (1.0 + hybrid_score)  # Convert back to distance
                 )
                 
+                # Detailed logging of per-chunk scores
+                logger.info(
+                    f"Hybrid scoring | id={chunk_id} | vector_score={data['vector_score']:.4f} (rank={data['vector_rank']}) | "
+                    f"bm25_score={data['bm25_score']:.4f} (rank={data['bm25_rank']}) | combined={hybrid_score:.4f}"
+                )
+
                 hybrid_results.append((hybrid_score, hybrid_chunk))
             
             # Sort by hybrid score (descending) and return top_k
             hybrid_results.sort(key=lambda x: x[0], reverse=True)
+
+            print(f"Hybrid results: {hybrid_results}")
             final_results = [chunk for _, chunk in hybrid_results[:top_k]]
+            # threshold = 0.5
+            # filtered_results = [chunk for _, chunk in hybrid_results if chunk.distance > threshold]
+            # final_results = filtered_results[:top_k]
             
             logger.info(f"Combined {len(vector_results)} vector and {len(bm25_results)} BM25 results into {len(final_results)} hybrid results")
             return final_results

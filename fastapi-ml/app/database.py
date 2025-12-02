@@ -42,7 +42,7 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
-# Embedding table removed - using ChromaDB exclusively for vector storage
+# Embedding table removed - using OpenSearch for vector storage
 
 
 class UserQuery(Base):
@@ -159,9 +159,28 @@ class DatabaseManager:
     
     @staticmethod
     async def store_embeddings(embeddings_data: List[Dict[str, Any]]) -> bool:
-        """Store multiple embeddings in ChromaDB."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.store_embeddings(embeddings_data)
+        """Store multiple embeddings in OpenSearch."""
+        # Convert dicts to EmbeddingData model and store via OpenSearch
+        try:
+            from .models import EmbeddingData as EmbModel
+            from .services.opensearch import opensearch_service
+            payload = []
+            for e in embeddings_data:
+                payload.append(
+                    EmbModel(
+                        document_id=e["document_id"],
+                        chunk_text=e["chunk_text"],
+                        embedding=e["embedding"],
+                        chunk_index=e["chunk_index"],
+                        division_id=e.get("division_id"),
+                        filename=e.get("filename"),
+                        is_active=e.get("is_active"),
+                    )
+                )
+            return await opensearch_service.store_document(payload)
+        except Exception as e:
+            logger.error(f"Error storing embeddings in OpenSearch: {e}")
+            return False
     
     @staticmethod
     async def search_similar_embeddings(
@@ -169,9 +188,27 @@ class DatabaseManager:
         division_id: uuid.UUID, 
         limit: int = 5
     ) -> List[Dict[str, Any]]:
-        """Search for similar embeddings using the configured vector service."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.search_similar_embeddings(query_embedding, division_id, limit)
+        """Search for similar embeddings using OpenSearch vector kNN."""
+        try:
+            from .services.opensearch import opensearch_service
+            os_results = await opensearch_service.search_similar_vector(
+                query_embedding=query_embedding,
+                division_id=division_id,
+                top_k=limit,
+            )
+            results: List[Dict[str, Any]] = []
+            for r in os_results:
+                results.append({
+                    "chunk_text": r.chunk_text,
+                    "chunk_index": r.chunk_index,
+                    "filename": r.filename,
+                    # Convert similarity score to distance-like metric used elsewhere
+                    "distance": 1.0 / (1.0 + float(r.score)),
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Error searching similar embeddings in OpenSearch: {e}")
+            return []
     
     @staticmethod
     async def log_user_query(
@@ -200,33 +237,62 @@ class DatabaseManager:
     
     @staticmethod
     async def delete_document_embeddings(document_id: uuid.UUID) -> bool:
-        """Delete all embeddings for a specific document."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.delete_document_embeddings(document_id)
+        """Delete all embeddings for a specific document from OpenSearch."""
+        from .services.opensearch import opensearch_service
+        return await opensearch_service.delete_document(document_id)
     
     @staticmethod
     async def delete_division_embeddings(division_id: uuid.UUID) -> bool:
-        """Delete all embeddings for a specific division."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.delete_division_embeddings(division_id)
+        """Delete all embeddings for a specific division from OpenSearch (by deleting by query)."""
+        try:
+            from .services.opensearch import opensearch_service
+            # Use OpenSearch delete_by_query for division
+            response = opensearch_service.client.delete_by_query(
+                index=opensearch_service.index_name,
+                body={
+                    "query": {"term": {"division_id": str(division_id)}}
+                }
+            )
+            logger.info(f"OpenSearch deleted division embeddings: {response}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting division embeddings in OpenSearch: {e}")
+            return False
     
     @staticmethod
     async def cleanup_all_embeddings() -> bool:
-        """Delete all embeddings from the vector database."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.cleanup_all_embeddings()
+        """Delete all embeddings from OpenSearch collection (recreate index)."""
+        try:
+            from .services.opensearch import opensearch_service
+            client = opensearch_service.client
+            index = opensearch_service.index_name
+            if client.indices.exists(index=index):
+                client.indices.delete(index=index, ignore=[400, 404])
+            # Recreate via service init logic
+            opensearch_service.__init__()
+            return True
+        except Exception as e:
+            logger.error(f"Error cleaning up embeddings in OpenSearch: {e}")
+            return False
     
     @staticmethod
     async def get_vector_service_stats() -> Dict[str, Any]:
-        """Get statistics from the vector service."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.get_vector_service_stats()
+        """Get statistics from OpenSearch index."""
+        try:
+            from .services.opensearch import opensearch_service
+            client = opensearch_service.client
+            stats = client.indices.stats(index=opensearch_service.index_name)
+            count = client.count(index=opensearch_service.index_name).get("count", 0)
+            return {"service": "OpenSearch", "index": opensearch_service.index_name, "doc_count": count, "stats": stats}
+        except Exception as e:
+            logger.error(f"Failed to get OpenSearch stats: {e}")
+            return {"service": "OpenSearch", "status": "error", "error": str(e)}
     
     @staticmethod
     async def update_document_active_status_in_vectors(document_id: uuid.UUID, is_active: bool) -> bool:
-        """Update document active status in ChromaDB when it changes in PostgreSQL."""
-        from .services.vector_manager import vector_manager
-        return await vector_manager.update_document_active_status(document_id, is_active)
+        """Update document active status in OpenSearch when it changes in PostgreSQL."""
+        from .services.opensearch import opensearch_service
+        return await opensearch_service.update_document_active_status(document_id, is_active)
 
 
 # Initialize database connection
