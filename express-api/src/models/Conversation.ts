@@ -34,7 +34,7 @@ export class Conversation {
   @OneToMany(() => ConversationMessage, (message) => message.conversation)
   messages: ConversationMessage[];
 
-  @ManyToOne(() => Division, (division) => division.user_queries, { nullable: true })
+  @ManyToOne(() => Division, (division) => division.user_queries, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'division_id' })
   division: Division | null;
 }

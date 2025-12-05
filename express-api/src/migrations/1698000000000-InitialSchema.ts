@@ -74,7 +74,7 @@ export class InitialSchema1698000000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE "documents" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "division_id" uuid NOT NULL,
+        "division_id" uuid NULL,
         "original_filename" character varying(255) NOT NULL,
         "storage_path" character varying(255) NOT NULL,
         "file_type" character varying(50) NOT NULL,

@@ -254,25 +254,13 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
       logger.warn(`Failed to delete embeddings for document ${id} from ChromaDB, but PostgreSQL deletion succeeded`);
       // We don't fail the request since PostgreSQL deletion succeeded
     }
+
+    // delete from storage and opensearch
+    await deleteDocumentFromStorageAndOpensearch(document);
     
     // Update document status to deleted
     await documentRepository.delete(id);
-    
-    // Optionally delete from storage (uncomment if you want to delete files)
-    try {
-      await storageService.deleteFile(document.storage_path);
-    } catch (storageError) {
-      logger.warn(`Failed to delete file from storage: ${document.storage_path}`, storageError);
-    }
 
-    // Delete from ChromaDB vector and OpenSearch database
-    // Trigger deletion via FastAPI microservice
-    try {
-      await axios.delete(`${config.fastapi.url}/delete-document/${id}`);
-    } catch (vectorError) {
-      logger.error(`Failed to delete document ${id} from ChromaDB and OpenSearch: ${vectorError}`);
-    }
-    
     logger.info(`Document deleted: ${id} by user ${req.user!.username}`);
     
     const message = 'Document deleted successfully';
@@ -286,3 +274,23 @@ export const deleteDocument = asyncHandler(async (req: AuthenticatedRequest, res
     return ResponseHandler.internalError(res, 'Failed to delete document');
   }
 });
+
+export const deleteDocumentFromStorageAndOpensearch = async (document: Document) => {
+  // delete from storage
+  try {
+    await storageService.deleteFile(document.storage_path);
+  } catch (error) {
+    logger.error(`Failed to delete file from storage: ${document.storage_path}`, error);
+    throw new Error(`Failed to delete file from storage: ${document.storage_path}`);
+  }
+
+  // delete from opensearch
+  try {
+    await axios.delete(`${config.fastapi.url}/delete-document/${document.id}`);
+  } catch (error) {
+    logger.error(`Failed to delete document ${document.id} from OpenSearch: ${error}`);
+    throw new Error(`Failed to delete document ${document.id} from OpenSearch: ${error}`);
+  }
+
+  return
+}

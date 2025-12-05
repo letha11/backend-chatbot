@@ -197,7 +197,7 @@ async def delete_document(document_id: UUID) -> DeleteDocumentResponse:
     """
     try:
         await db_manager.delete_document_embeddings(document_id)
-        await opensearch_service.delete_document(document_id)
+        # await opensearch_service.delete_document(document_id)
         return DeleteDocumentResponse(status="success", message="Document deleted successfully", data={
             "document_id": str(document_id)
         })
@@ -340,7 +340,7 @@ async def process_document_parsing(
             return
 
         # Store documents in OpenSearch
-        await opensearch_service.store_document(embeddings_data)
+        # await opensearch_service.store_document(embeddings_data)
         
         # Update final status to embedded
         await db_manager.update_document_status(document_id, "embedded")

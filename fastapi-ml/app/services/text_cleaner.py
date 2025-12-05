@@ -284,13 +284,13 @@ class TextCleaner:
     def _remove_patterns(self, text: str, aggressive: bool = False) -> str:
         """Remove unwanted patterns from text."""
         # Remove URLs
-        text = self.url_pattern.sub(' ', text)
+        # text = self.url_pattern.sub(' ', text)
         
         # Remove email addresses
-        text = self.email_pattern.sub(' ', text)
+        # text = self.email_pattern.sub(' ', text)
         
         # Remove phone numbers
-        text = self.phone_pattern.sub(' ', text)
+        # text = self.phone_pattern.sub(' ', text)
         
         if aggressive:
             # Remove all punctuation and special characters

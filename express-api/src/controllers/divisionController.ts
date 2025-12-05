@@ -7,6 +7,8 @@ import { logger } from '../utils/logger';
 import { ResponseHandler } from '../utils/response';
 import { FindManyOptions } from 'typeorm';
 import { config } from '../config/environment';
+import { Document } from '../models/Document';
+import { deleteDocumentFromStorageAndOpensearch } from './documentController';
 
 export const getDefaultDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const divisionRepository = AppDataSource.getRepository(Division);
@@ -106,21 +108,49 @@ export const updateDivision = asyncHandler(async (req: AuthenticatedRequest, res
   return ResponseHandler.success(res, updatedDivision, 'Division updated successfully');
 });
 
-export const deleteDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+export const deactivateDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  
   const divisionRepository = AppDataSource.getRepository(Division);
   
   const division = await divisionRepository.findOne({ where: { id } });
-  
   if (!division) {
     return ResponseHandler.notFound(res, 'Division not found');
   }
-  
-  // Soft delete by setting is_active to false
   await divisionRepository.update(id, { is_active: false });
-  
-  logger.info(`Division soft deleted: ${id} by user ${req.user!.username}`);
-  
   return ResponseHandler.successMessage(res, 'Division deactivated successfully');
+
+});
+
+export const deleteDivision = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const divisionRepository = AppDataSource.getRepository(Division);
+  const division = await divisionRepository.findOne({ where: { id } });
+
+  if (!division) {
+    return ResponseHandler.notFound(res, 'Division not found');
+  }
+
+  try {
+    const documentRepository = AppDataSource.getRepository(Document);
+    const documents = await documentRepository.find({ where: { division_id: id } });
+    logger.info("Start deleting document related to division ${id}");
+
+    logger.info(`Found ${documents.length} documents related to division ${id}`);
+
+    // const promises = documents.map(document => deleteDocumentFromStorageAndOpensearch(document));
+    // await Promise.all(promises);
+
+    for (const document of documents) {
+      await deleteDocumentFromStorageAndOpensearch(document);
+      await documentRepository.remove(document);
+      logger.info(`Document ${document.id} deleted from storage and opensearch by user ${req.user!.username}`);
+    }
+
+    await divisionRepository.remove(division);
+    logger.info(`Division ${id} deleted by user ${req.user!.username}`);
+    return ResponseHandler.successMessage(res, 'Division deleted successfully');
+  } catch (error) {
+    logger.error(`Error deleting division ${id}:`, error);
+    return ResponseHandler.internalError(res, 'Failed to delete division');
+  }
 });

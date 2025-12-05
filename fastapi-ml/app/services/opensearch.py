@@ -248,8 +248,8 @@ class OpenSearchService:
                     }
                 }
             )
-            logger.info(f"OpenSearch document deleted: {response}")
-            return True
+            logger.info(f"OpenSearch document deleted: {response}, document_id: {document_id}")
+            return False
         except Exception as e:
             logger.error(f"Error deleting document from OpenSearch: {e}")
             return False

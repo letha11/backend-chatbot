@@ -17,8 +17,8 @@ export class Document {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  division_id: string;
+  @Column({ type: 'uuid', nullable: true })
+  division_id: string | null;
 
   @Column({ type: 'varchar', length: 255 })
   original_filename: string;
@@ -45,7 +45,7 @@ export class Document {
   updated_at: Date;
 
   // Relations
-  @ManyToOne(() => Division, (division) => division.documents)
+  @ManyToOne(() => Division, (division) => division.documents, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'division_id' })
   division: Division;
 

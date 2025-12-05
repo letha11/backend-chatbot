@@ -250,13 +250,8 @@ class HybridRetriever:
             # Sort by hybrid score (descending) and return top_k
             hybrid_results.sort(key=lambda x: x[0], reverse=True)
 
-            print(f"Hybrid results: {hybrid_results}")
             final_results = [chunk for _, chunk in hybrid_results[:top_k]]
-            # threshold = 0.5
-            # filtered_results = [chunk for _, chunk in hybrid_results if chunk.distance > threshold]
-            # final_results = filtered_results[:top_k]
             
-            logger.info(f"Combined {len(vector_results)} vector and {len(bm25_results)} BM25 results into {len(final_results)} hybrid results")
             return final_results
             
         except Exception as e:

@@ -74,10 +74,10 @@ class EmbeddingService:
             texts = [chunk.text for chunk in chunks]
             
             # Generate embeddings
-            if self.use_openai:
-                embeddings = await self._generate_openai_embeddings(texts)
-            else:
-                embeddings = await self._generate_sentence_transformer_embeddings(texts)
+            # if self.use_openai:
+            #     embeddings = await self._generate_openai_embeddings(texts)
+            # else:
+            embeddings = await self._generate_sentence_transformer_embeddings(texts)
             
             if embeddings is None:
                 logger.error("Failed to generate embeddings")
@@ -115,14 +115,14 @@ class EmbeddingService:
             Embedding vector as list of floats, or None if error
         """
         try:
-            if self.use_openai:
-                embeddings = await self._generate_openai_embeddings([query])
-                if embeddings:
-                    return embeddings[0].tolist() if isinstance(embeddings[0], np.ndarray) else embeddings[0]
-            else:
-                embeddings = await self._generate_sentence_transformer_embeddings([query])
-                if embeddings:
-                    return embeddings[0].tolist() if isinstance(embeddings[0], np.ndarray) else embeddings[0]
+            # if self.use_openai:
+            #     embeddings = await self._generate_openai_embeddings([query])
+            #     if embeddings:
+            #         return embeddings[0].tolist() if isinstance(embeddings[0], np.ndarray) else embeddings[0]
+            # else:
+            embeddings = await self._generate_sentence_transformer_embeddings([query])
+            if embeddings:
+                return embeddings[0].tolist() if isinstance(embeddings[0], np.ndarray) else embeddings[0]
             
             return None
             
