@@ -15,7 +15,7 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
     division_id?: string | null;
     title?: string;
     user_id?: string | null;
-    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; sources: string }>;
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string; sources: string; timestamp?: string }>;
   };
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -48,14 +48,15 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
     conversation = await conversationRepo.save(conversation);
   }
 
-  const toInsert = messages.map((m) =>
-    messageRepo.create({
+  const toInsert = messages.map((m) => {
+    return messageRepo.create({
       conversation_id: conversation!.id,
       role: m.role,
       content: m.content,
       sources: m.sources,
+      created_at: m.timestamp ? new Date(m.timestamp) : new Date(),
     })
-  );
+  });
 
   await messageRepo.save(toInsert);
 
@@ -71,7 +72,6 @@ export const ingestMessage = asyncHandler(async (req: Request, res: Response) =>
 
 export const getHistoryInternal = asyncHandler(async (req: Request, res: Response) => {
   const { conversation_id } = req.params as { conversation_id: string };
-  const limit = Math.min(parseInt((req.query.limit as string) || '6', 10), 20);
 
   if (!conversation_id) {
     return ResponseHandler.validationError(res, 'conversation_id is required');
@@ -88,7 +88,6 @@ export const getHistoryInternal = asyncHandler(async (req: Request, res: Respons
   const messages = await messageRepo.find({
     where: { conversation_id },
     order: { created_at: 'DESC' },
-    take: limit,
   });
 
   // Return in chronological order
@@ -109,7 +108,7 @@ export const getHistoryInternal = asyncHandler(async (req: Request, res: Respons
 // Public API to fetch recent history for a conversation (for UI or RAG context)
 export const getHistory = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { conversation_id } = req.params as { conversation_id: string };
-  const limit = Math.min(parseInt((req.query.limit as string) || '6', 10), 20);
+
 
 
   if (!conversation_id) {
@@ -131,7 +130,6 @@ export const getHistory = asyncHandler(async (req: AuthenticatedRequest, res: Re
   const messages = await messageRepo.find({
     where: { conversation_id },
     order: { created_at: 'DESC' },
-    take: limit,
   });
 
   // Return in chronological order
@@ -153,7 +151,6 @@ export const getHistory = asyncHandler(async (req: AuthenticatedRequest, res: Re
 export const listConversations = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   let division_id = (req.query.division_id as string) || undefined;
-  const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
 
   const conversationRepo = AppDataSource.getRepository(Conversation);
   const divisionRepository = AppDataSource.getRepository(Division);
@@ -168,7 +165,6 @@ export const listConversations = asyncHandler(async (req: AuthenticatedRequest, 
   const conversations = await conversationRepo.find({
     where,
     order: { updated_at: 'DESC' },
-    take: limit,
   });
 
   return ResponseHandler.success(res, {
