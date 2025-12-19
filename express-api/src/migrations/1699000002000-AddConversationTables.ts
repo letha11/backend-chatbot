@@ -21,6 +21,7 @@ export class AddConversationTables1699000002000 implements MigrationInterface {
         "conversation_id" uuid NOT NULL,
         "role" varchar(20) NOT NULL,
         "content" text NOT NULL,
+        "sources" text NOT NULL DEFAULT '',
         "created_at" TIMESTAMPTZ NOT NULL DEFAULT now(),
         CONSTRAINT "FK_conversation" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE
       );

@@ -215,14 +215,14 @@ class TextCleaner:
             # Step 1: Basic normalization
             text = self._normalize_text(text)
             
-            # Step 2: Remove unwanted patterns
-            text = self._remove_patterns(text, aggressive=aggressive)
+            # # Step 2: Remove unwanted patterns
+            # text = self._remove_patterns(text, aggressive=aggressive)
             
-            # Step 3: Process with multilingual spaCy models
-            text = self._process_multilingual_text(text, aggressive_cleaning=aggressive)
+            # # Step 3: Process with multilingual spaCy models
+            # text = self._process_multilingual_text(text, aggressive_cleaning=aggressive)
             
-            # Step 4: Final cleanup
-            text = self._final_cleanup(text)
+            # # Step 4: Final cleanup
+            # text = self._final_cleanup(text)
             
             logger.debug(f"Cleaned text length: {len(text)}")
             return text
@@ -249,16 +249,17 @@ class TextCleaner:
             logger.debug(f"Cleaning query: '{query[:100]}...'")
             
             # Step 1: Basic normalization (less aggressive for queries)
-            text = self._normalize_text(query)
+            # text = self._normalize_text(query)
+            text = query
             
             # Step 2: Remove patterns but keep more context for queries
             text = self._remove_patterns(text, aggressive=False)
             
             # Step 3: Process with multilingual models (keep stop words for better context)
-            text = self._process_multilingual_text(text, aggressive_cleaning=False)
+            # text = self._process_multilingual_text(text, aggressive_cleaning=False)
             
             # Step 4: Final cleanup
-            text = self._final_cleanup(text)
+            # text = self._final_cleanup(text)
             
             logger.debug(f"Cleaned query: '{text}'")
             return text
@@ -273,10 +274,10 @@ class TextCleaner:
         # Convert to lowercase
         text = text.lower()
         
-        # Normalize unicode characters
-        text = text.encode('ascii', 'ignore').decode('ascii')
+        # # Normalize unicode characters
+        # text = text.encode('ascii', 'ignore').decode('ascii')
         
-        # Replace multiple whitespace with single space
+        # # Replace multiple whitespace with single space
         text = self.extra_whitespace_pattern.sub(' ', text)
         
         return text.strip()

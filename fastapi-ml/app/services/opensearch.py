@@ -58,11 +58,11 @@ class OpenSearchService:
                             "embedding": {
                                 "type": "knn_vector",
                                 "dimension": settings.embedding_dimension,
-                                # "method": {
-                                #     "name": "hnsw",
-                                #     "space_type": "cosinesimil",
-                                #     "engine": "nmslib"
-                                # }
+                                "method": {
+                                    "name": "hnsw",
+                                    "space_type": "l2",
+                                    "engine": "faiss"
+                                }
                             }
                         }
                     }

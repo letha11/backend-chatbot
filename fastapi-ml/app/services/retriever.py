@@ -2,6 +2,7 @@
 RAG (Retrieval Augmented Generation) pipeline service.
 """
 import asyncio
+import datetime
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 import openai
@@ -62,23 +63,25 @@ class RAGService:
         """
         try:
             logger.info(f"Processing chat query for division {division_id}: {query[:100]}...")
+            start_processing_time = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
             
             # Step 1: Clean the query for better matching
             cleaned_query = text_cleaner.clean_query_text(query)
             logger.info(f"Cleaned query: '{cleaned_query}'")
             
-            # Extract key terms for enhanced retrieval
-            key_terms = text_cleaner.extract_key_terms(query, max_terms=5)
-            if key_terms:
-                logger.info(f"Key terms extracted: {key_terms}")
-                # Enhance query with key terms if they're not already present
-                enhanced_query = self._enhance_query_with_terms(cleaned_query, key_terms)
-                logger.info(f"Enhanced query: '{enhanced_query}'")
-            else:
-                enhanced_query = cleaned_query
+            # # Extract key terms for enhanced retrieval
+            # key_terms = text_cleaner.extract_key_terms(query, max_terms=5)
+            # if key_terms:
+            #     logger.info(f"Key terms extracted: {key_terms}")
+            #     # Enhance query with key terms if they're not already present
+            #     enhanced_query = self._enhance_query_with_terms(cleaned_query, key_terms)
+            #     logger.info(f"Enhanced query: '{enhanced_query}'")
+            # else:
+            #     enhanced_query = cleaned_query
             
             # Step 2: Generate query embedding using the enhanced query
-            query_embedding = await embedding_service.generate_query_embedding(enhanced_query)
+            # query_embedding = await embedding_service.generate_query_embedding(enhanced_query)
+            query_embedding = await embedding_service.generate_query_embedding(cleaned_query)
             if not query_embedding:
                 logger.error("Failed to generate query embedding")
                 return None
@@ -138,8 +141,8 @@ class RAGService:
                     ingest_url = f"{settings.express_api_url}/api/v1/conversations/ingest"
                     body: Dict[str, Any] = {
                         "messages": [
-                            {"role": "user", "content": query},
-                            {"role": "assistant", "content": answer, "sources": ",".join([filename for filename in similar_filename_chunks])},
+                            {"role": "user", "content": query, "timestamp": start_processing_time},
+                            {"role": "assistant", "content": answer, "sources": ",".join([filename for filename in similar_filename_chunks]), "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat()},
                         ],
                         "division_id": str(division_id),
                     }
@@ -376,7 +379,7 @@ class RAGService:
         prompt = f"""
         **Generate Response to User Query**
         **Step 1: Parse Context Information**
-        Extract and utilize relevant knowledge from the provided context within `<context></context>` XML tags.
+        Extract and utilize relevant knowledge from the provided context within `<context>` tags.
         **Step 2: Analyze User Query**
         Carefully read and comprehend the user's query, pinpointing the key concepts, entities, and intent behind the question.
         **Step 3: Determine Response**
@@ -392,6 +395,9 @@ class RAGService:
         Maintain consistency by ensuring the response is in the same language as the user's query.
         **Step 8: Provide Response**
         Generate a clear, concise, and informative response to the user's query, adhering to the guidelines outlined above.
+
+        DO NOT INCLUDE THE CONTEXT INFORMATION IN THE RESPONSE.
+
         <history>
         {history}
         </history>

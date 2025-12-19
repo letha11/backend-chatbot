@@ -186,7 +186,7 @@ class DocumentParser:
             logger.info(f"Text cleaning stats for {filename}: {stats}")
             
             # Chunk the cleaned text
-            chunks = await self._chunk_text(cleaned_text)
+            chunks = await self._chunk_text(cleaned_text, filename)
             logger.info(f"Successfully parsed {filename} into {len(chunks)} chunks")
             return chunks
             
@@ -529,7 +529,7 @@ class DocumentParser:
         
         return text
     
-    async def _chunk_text(self, text: str) -> List[DocumentChunk]:
+    async def _chunk_text(self, text: str, filename: str) -> List[DocumentChunk]:
         """
         Split text into chunks with overlap.
         
@@ -564,6 +564,7 @@ class DocumentParser:
             
             # Extract chunk text
             chunk_text = text[start:end].strip()
+            chunk_text = f"{filename} - Chunk {chunk_index}: {chunk_text}" # better capturing the context of the chunk
             
             if chunk_text:  # Only add non-empty chunks
                 chunk = DocumentChunk(

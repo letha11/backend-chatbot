@@ -16,7 +16,6 @@ from ..database import db_manager
 
 from ..config import settings
 
-
 class HybridRetriever:
     """Hybrid retriever combining vector search and BM25."""
     
@@ -72,11 +71,16 @@ class HybridRetriever:
             
             # Perform both searches in parallel
             vector_task = self._vector_search(query_embedding, division_id, vector_top_k)
+
+            # FIXME: Uncomment this when want to use BM25 or hybrid search
             bm25_task = self._opensearch_search(query, division_id, bm25_top_k)
-            
             vector_results, bm25_results = await asyncio.gather(
                 vector_task, bm25_task, return_exceptions=True
             )
+
+            # FIXME: Comment this when want to use BM25 or hybrid search
+            # bm25_results = []
+            # vector_results = await vector_task
             
             # Handle exceptions
             if isinstance(vector_results, Exception):
@@ -228,7 +232,7 @@ class HybridRetriever:
                 )
 
                 if hybrid_score < settings.result_threshold:
-                    logger.info(f"Skipping chunk {chunk_id} with hybrid score {hybrid_score}")
+                    logger.info(f"Skipping chunk {chunk_id} with hybrid score {hybrid_score}, vector_score {data['vector_score']:.4f}, bm25_score {data['bm25_score']:.4f}")
                     continue
                 
                 # Create new chunk with hybrid distance
