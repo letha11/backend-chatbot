@@ -132,10 +132,6 @@ export const getAllDocuments = asyncHandler(async (req: AuthenticatedRequest, re
   const divisionRepository = AppDataSource.getRepository(Division);
 
   let division: Division | null = null;
-
-  console.log('config.features.division', config.features.division);
-  console.log('division_id', division_id);
-  console.log('is_active', is_active);
   
   // Handle division logic based on configuration and query parameters
   if (!config.features.division) {
@@ -148,8 +144,7 @@ export const getAllDocuments = asyncHandler(async (req: AuthenticatedRequest, re
       return ResponseHandler.notFound(res, 'Division not found or inactive');
     }
   }
-  // If division feature is enabled but no division_id provided, query all documents
-  
+
   const queryBuilder = documentRepository.createQueryBuilder('document')
     .leftJoinAndSelect('document.division', 'division')
     .orderBy('document.created_at', 'DESC');

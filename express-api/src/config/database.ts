@@ -18,8 +18,8 @@ export const AppDataSource = new DataSource({
   synchronize: config.nodeEnv === 'development', // Only for development
   logging: config.nodeEnv === 'development',
   entities: [User, Division, Document, Embedding, UserQuery, Conversation, ConversationMessage],
-  migrations: ['src/migrations/*.ts'],
-  subscribers: ['src/subscribers/*.ts'],
+  migrations: config.nodeEnv === 'development' ? ['src/migrations/*.ts'] : ['dist/migrations/*.js'],
+  subscribers: config.nodeEnv === 'development' ? ['src/subscribers/*.ts'] : ['dist/subscribers/*.js'],
 });
 
 export const initializeDatabase = async (): Promise<void> => {
