@@ -29,6 +29,7 @@ class HybridRetriever:
         """
         self.vector_weight = vector_weight
         self.bm25_weight = bm25_weight
+        self.k_rff = 60
         
         # Ensure weights sum to 1.0
         total_weight = vector_weight + bm25_weight
@@ -151,8 +152,92 @@ class HybridRetriever:
         except Exception as e:
             logger.error(f"Error in OPENSEARCH search: {e}")
             return []
+
+    def _calculate_rff_score(self, rank: float) -> float:
+        """Calculate RFF score."""
+        if rank == float('inf'):
+            return 0.0
+        return 1.0 / (self.k_rff + rank)
     
     def _combine_results(
+        self,
+        vector_results: List[SimilarChunk],
+        bm25_results: List[OpenSearchResult],
+        top_k: int
+    ) -> List[SimilarChunk]:
+        """
+        Combine vector and BM25 results using RFF.
+        """
+        try:
+            # Create a mapping of chunk identifiers to results
+            chunk_map: Dict[str, Dict[str, Any]] = {}
+            
+            # Add vector results
+            for i, chunk in enumerate(vector_results):
+                chunk_id = self._get_chunk_id(chunk)
+                
+                chunk_map[chunk_id] = {
+                    'chunk': chunk,
+                    'vector_score': 0,
+                    'vector_rank': i + 1,
+                    'bm25_score': 0.0,
+                    'bm25_rank': 0
+                }
+            
+            # Add BM25 results
+            for i, result in enumerate(bm25_results):
+                chunk_id = self._get_chunk_id(result)
+                # OpenSearch score is higher for better matches, use it directly as similarity score
+                bm25_score = result.score
+
+                if chunk_id in chunk_map:
+                    # Update existing entry
+                    chunk_map[chunk_id]['bm25_score'] = bm25_score
+                    chunk_map[chunk_id]['bm25_rank'] = i + 1
+                else:
+                    similar_chunk = SimilarChunk(
+                        chunk_text=result.chunk_text,
+                        chunk_index=result.chunk_index,
+                        filename=result.filename,
+                        distance=1.0 / (1.0 + bm25_score)  # Convert score to distance format
+                    )
+
+                    # Add new entry
+                    chunk_map[chunk_id] = {
+                        'chunk': similar_chunk,
+                        'vector_score': 0,
+                        'vector_rank': 0,
+                        'bm25_score': bm25_score,
+                        'bm25_rank': i + 1
+                    }
+            
+            # Calculate RFF scores
+            hybrid_results = []
+            for chunk_id, data in chunk_map.items():
+                rff_score = self._calculate_rff_score(data['vector_rank'] + data['bm25_rank'])
+
+                hybrid_chunk = SimilarChunk(
+                    chunk_text=data['chunk'].chunk_text,
+                    chunk_index=data['chunk'].chunk_index,
+                    filename=data['chunk'].filename,
+                    distance=1.0 / (1.0 + data['vector_score'] + data['bm25_score']),
+                )
+
+                logger.info(
+                    f"RRF | id={chunk_id} | v_rank={data['vector_rank']} | "
+                    f"b_rank={data['bm25_rank']} | score={rff_score:.10f}"
+                )
+                hybrid_results.append((rff_score, hybrid_chunk))
+            
+            # Sort by RFF score (descending) and return top_k
+            hybrid_results.sort(key=lambda x: x[0], reverse=True)
+            final_results = [chunk for _, chunk in hybrid_results[:top_k]]
+            return final_results
+        except Exception as e:
+            logger.error(f"Error combining results: {e}")
+            return []
+    
+    def _combine_results_weighted(
         self,
         vector_results: List[SimilarChunk],
         bm25_results: List[OpenSearchResult],
@@ -188,7 +273,7 @@ class HybridRetriever:
             
             # Add BM25 results
             for i, result in enumerate(bm25_results):
-                chunk_id = self._get_opensearch_chunk_id(result)
+                chunk_id = self._get_chunk_id(result)
                 # OpenSearch score is higher for better matches, use it directly as similarity score
                 bm25_score = result.score
 
@@ -262,9 +347,14 @@ class HybridRetriever:
             logger.error(f"Error combining results: {e}")
             return []
     
-    def _get_chunk_id(self, chunk: SimilarChunk) -> str:
+    def _get_chunk_id(self, chunk: SimilarChunk | OpenSearchResult) -> str:
         """Generate a unique identifier for a chunk."""
-        return f"{chunk.filename}_{chunk.chunk_index}"
+        if isinstance(chunk, SimilarChunk):
+            return f"{chunk.filename}_{chunk.chunk_index}"
+        elif isinstance(chunk, OpenSearchResult):
+            return f"{chunk.filename}_{chunk.chunk_index}"
+        else:
+            raise ValueError(f"Invalid chunk type: {type(chunk)}")
 
     def _get_opensearch_chunk_id(self, result: OpenSearchResult) -> str:
         """Generate a unique identifier for a chunk."""
