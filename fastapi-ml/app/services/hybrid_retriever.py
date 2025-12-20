@@ -214,7 +214,7 @@ class HybridRetriever:
             # Calculate RFF scores
             hybrid_results = []
             for chunk_id, data in chunk_map.items():
-                rff_score = self._calculate_rff_score(data['vector_rank'] + data['bm25_rank'])
+                rff_score = self._calculate_rff_score(data['vector_rank']) + self._calculate_rff_score(data['bm25_rank'])
 
                 hybrid_chunk = SimilarChunk(
                     chunk_text=data['chunk'].chunk_text,
