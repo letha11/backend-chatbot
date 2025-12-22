@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { ingestMessage, getHistory, listConversations, getHistoryInternal } from '../controllers/conversationController';
+import { ingestMessage, getHistory, listConversations, getHistoryInternal, listAllConversations } from '../controllers/conversationController';
 import { validateBody } from '../middlewares/validation';
-import { authenticateToken } from '../middlewares/auth';
+import { authenticateToken, requireRole } from '../middlewares/auth';
 import { config } from '../config/environment';
 
 const router = Router();
@@ -25,6 +25,9 @@ router.get('/:conversation_id/history', authenticateToken, getHistory);
 
 // List conversations for the current user (JWT required), optional division filter
 router.get('/', authenticateToken, listConversations);
+
+// List all conversations (admin and super_admin only)
+router.get('/all', authenticateToken, requireRole(['admin', 'super_admin']), listAllConversations);
 
 export default router;
 

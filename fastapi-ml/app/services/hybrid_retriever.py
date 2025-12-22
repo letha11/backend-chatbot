@@ -153,9 +153,9 @@ class HybridRetriever:
             logger.error(f"Error in OPENSEARCH search: {e}")
             return []
 
-    def _calculate_rff_score(self, rank: float) -> float:
+    def _calculate_rff_score(self, rank: float | int) -> float:
         """Calculate RFF score."""
-        if rank == float('inf'):
+        if rank == float('inf') or rank == 0:
             return 0.0
         return 1.0 / (self.k_rff + rank)
     

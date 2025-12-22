@@ -179,4 +179,22 @@ export const listConversations = asyncHandler(async (req: AuthenticatedRequest, 
   }, 'Conversations retrieved successfully');
 });
 
+// List all conversations (admin and super_admin only), ordered by updated_at desc
+export const listAllConversations = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const conversationRepo = AppDataSource.getRepository(Conversation);
 
+  const conversations = await conversationRepo.find({
+    order: { updated_at: 'DESC' },
+  });
+
+  return ResponseHandler.success(res, {
+    conversations: conversations.map((c) => ({
+      id: c.id,
+      title: c.title,
+      division_id: c.division_id,
+      user_id: c.user_id,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+    })),
+  }, 'All conversations retrieved successfully');
+});
