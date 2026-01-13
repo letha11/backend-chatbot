@@ -28,15 +28,6 @@ This project uses a microservices architecture with two main components:
   - RAG-based chat responses with OpenRouter LLMs
   - ML model management
 
-## 🌟 OpenRouter Integration
-
-This system is configured to use **OpenRouter** for accessing various LLM models, including the powerful `openai/gpt-oss-120b` model. OpenRouter provides:
-
-- **Access to Multiple Models**: GPT, Claude, Llama, and many open-source models
-- **Cost Optimization**: Compare prices across different providers
-- **OpenAI API Compatible**: Drop-in replacement for OpenAI API calls
-- **No Vendor Lock-in**: Easy switching between models
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -360,41 +351,8 @@ backend/
 └── README.md            # This file
 ```
 
-## 📚 Documentation
-
-- **[OpenRouter Setup Guide](OPENROUTER_SETUP.md)** - Detailed OpenRouter configuration
-- **[Express API README](express-api/README.md)** - Express.js service documentation
-- **[FastAPI ML README](fastapi-ml/README.md)** - FastAPI ML service documentation
-- **[API Response Structure](express-api/docs/API_RESPONSE_STRUCTURE.md)** - Standardized API responses
-
-## 💰 Cost Considerations
-
-OpenRouter provides transparent pricing across different models:
-
-- **openai/gpt-oss-120b**: Cost-effective large open-source model
-- **Pricing varies**: Check [OpenRouter pricing](https://openrouter.ai/models?pricing=true)
-- **Monitor usage**: Use OpenRouter dashboard to track costs
-- **Optimize context**: Adjust `TOP_K_RESULTS` to control context size
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
 ## 📄 License
 
 This project is licensed under the MIT License.
-
-## 🆘 Support
-
-- **OpenRouter Issues**: Check [OpenRouter documentation](https://openrouter.ai/docs)
-- **General Issues**: Create an issue in the repository
-
----
-
-**Built with ❤️ using Express.js, FastAPI, OpenRouter, PostgreSQL, and Docker**
 
 **Ready to chat with your documents using OpenRouter's powerful LLMs!** 🚀
