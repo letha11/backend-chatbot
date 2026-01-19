@@ -12,7 +12,9 @@ import routes from './routes';
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images to be loaded cross-origin
+}));
 app.use(cors({
   // origin: config.nodeEnv === 'production' ? false : true, // Configure for production
   origin: true, // Allow all origins
